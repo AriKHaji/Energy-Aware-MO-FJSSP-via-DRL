@@ -5,7 +5,7 @@
 # (R)   [string]  RL algorithm you want to use - This template is for dqn
 algorithm: ppo_masked
 # (R)   [string]  Path to the file with generated data that to be used for training
-instances_file: jssp/config_job3_task4_tools0.pkl
+instances_file: fjssp/config_job3_task4_tools0.pkl
 # (R)   [string]  Test Environment: Should be the same the agent was trained on
                   # to stay consistent with action and observation spaces
 environment: env_tetris_scheduling
@@ -26,6 +26,6 @@ experiment_save_path: models
 # (O)   [int]:    wandb mode choose: choose from [0: no wandb, 1: wandb_offline, 2: wandb_online]
 wandb_mode: 0
 # (O)   [string]  Set a wandb project where you want to upload all wandb logs
-wandb_project: project-1
+wandb_project: jssp_energy
 # (R)   List[str] List of all heuristics and algorithms against which to benchmark
 test_heuristics: ['rand', 'EDD', 'SPT', 'MTR', 'LTR']

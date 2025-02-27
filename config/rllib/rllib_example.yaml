@@ -4,7 +4,7 @@
 
 # --- Data parameter ---
 # (R)   [string]  Path to the file with generated data that to be used for training
-instances_file: jssp/config_job3_task4_tools0.pkl
+instances_file: fjssp/config_job3_task4_tools0.pkl
 
 # --- Environment parameter ---
 # (R)   [str]     Environment you want to use. The vanilla case is env_tetris_scheduling.

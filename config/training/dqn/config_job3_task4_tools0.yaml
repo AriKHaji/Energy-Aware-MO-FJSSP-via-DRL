@@ -5,7 +5,7 @@
 # (R)   [string]  RL algorithm you want to use - This template is for dqn
 algorithm: dqn
 # (R)   [string]  Path to the file with generated data that to be used for training
-instances_file: jssp/config_job3_task4_tools0.pkl
+instances_file: fjssp/config_job3_task4_tools0.pkl
 # (O)   [string]  The finished model is saved under this name. Alternatively set to <automatic>, then it will be
                   # replaced with the current DayMonthYearHourMinute
 saved_model_name: example_dqn_agent
@@ -23,7 +23,7 @@ experiment_save_path: models
 # (O)   [int]:    wandb mode choose: choose from [0: no wandb, 1: wandb_offline, 2: wandb_online]
 wandb_mode: 0
 # (O)   [string]  Set a wandb project where you want to upload all wandb logs
-wandb_project: project-1
+wandb_project: jssp_energy
 
 # --- dqn parameter ---
 # (O)   [int]     Size of the memory buffer = max number of rollouts that stored before the oldest are deleted
