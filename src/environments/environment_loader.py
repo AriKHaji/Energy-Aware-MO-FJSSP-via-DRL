@@ -1,12 +1,18 @@
 import warnings
 
 from typing import Tuple, Any
+
+from src.environments.energy_env import EnergyEnv
 from src.environments.env_tetris_scheduling import Env
 from src.environments.env_tetris_scheduling_indirect_action import IndirectActionEnv
 
 # Constants
 DEFAULT_ENVIRONMENT_NAME: str = 'env_tetris_scheduling'
 ENVIRONMENT_MAPPER_DICT: dict = {
+    'energy_env': {
+        'class': EnergyEnv,
+        'compatible_algorithms': ['ppo_masked']
+    },
     'env_tetris_scheduling': {
         'class': Env,
         'compatible_algorithms': ['ppo_masked']

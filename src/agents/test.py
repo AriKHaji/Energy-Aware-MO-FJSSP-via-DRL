@@ -17,9 +17,12 @@ from typing import Tuple, List, Dict, Union
 import numpy as np
 from tqdm import tqdm
 
+from src.environments.energy_env import EnergyEnv
 from src.environments.environment_loader import EnvironmentLoader
 from src.agents.heuristic.heuristic_agent import HeuristicSelectionAgent
+from src.utils.energy_fjssp_logger import LoggerForEnergyFJSSP
 from src.utils.evaluations import EvaluationHandler
+from src.utils.energy_fjssp_evaluations import EvaluationHandlerForEnergyFJSSP
 from src.utils.logger import Logger
 from src.utils.file_handler.data_handler import DataHandler
 from src.utils.file_handler.model_handler import ModelHandler
@@ -46,7 +49,11 @@ def get_action(env, model, heuristic_id: str, heuristic_agent: Union[HeuristicSe
     assert bool(heuristic_id) != bool(model), \
         "You have to pass an agent model XOR a heuristic id to solve the scheduling problem"
     obs = env.state_obs
+
     mask = env.get_action_mask()
+
+    # print(f'Mask: {mask}')
+    # print(f'Observation {obs}')
 
     if heuristic_id:
         action_mode = 'heuristic'
@@ -57,6 +64,7 @@ def get_action(env, model, heuristic_id: str, heuristic_agent: Union[HeuristicSe
         action_mode = 'agent'
         selected_action, _ = model.predict(observation=obs, action_mask=mask)
 
+    # print(f'selected_action: {selected_action}, action_mode: {action_mode}')
     return selected_action, action_mode
 
 
@@ -83,6 +91,7 @@ def run_episode(env, model, heuristic_id: Union[str, None], handler: EvaluationH
         steps += 1
         action, action_mode = get_action(env, model, heuristic_id, heuristic_agent)
 
+        # print(f'Action: {action} in step #{steps}')
         b = env.step(action, action_mode=action_mode)
         total_reward += b[1]
         done = b[2]
@@ -141,9 +150,12 @@ def log_results(plot_logger: Logger, inter_test_idx: Union[int, None], heuristic
     :return: None
 
     """
-
     # get recent measures for the table
-    measures = {'total_reward': handler.rewards[-1], 'makespan': handler.makespan[-1],
+    if isinstance(handler, EvaluationHandlerForEnergyFJSSP):
+        measures = {'total_reward': handler.rewards[-1], 'makespan': handler.makespan[-1],
+                'total energy consumption': handler.total_energy_consumption[-1]}
+    else:
+        measures = {'total_reward': handler.rewards[-1], 'makespan': handler.makespan[-1],
                 'tardiness': handler.tardiness[-1]}
 
     gantt_chart = env.render(mode="image")
@@ -177,7 +189,9 @@ def test_model(env_config: Dict, data: List[List[Task]], logger: Logger, plot: b
     """
 
     # create evaluation handler
-    evaluation_handler = EvaluationHandler()
+    #evaluation_handler = EvaluationHandler()
+    evaluation_handler = EvaluationHandlerForEnergyFJSSP() if env_config.get('environment') == 'energy_env' else EvaluationHandler()
+
 
     for test_i in range(len(data)):
 
@@ -230,11 +244,11 @@ def test_model_and_heuristic(config: dict, model, data_test: List[List[Task]], l
         res = test_model(heuristic_id=heuristic, **test_kwargs)
         results.update({heuristic: res})
 
-    # test solver and calculate optimality gap
-    res = test_solver(config, data_test, logger)
-    results.update({'solver': res})
-
-    results = EvaluationHandler.add_solver_gap_to_results(results)
+    # # test solver and calculate optimality gap
+    # res = test_solver(config, data_test, logger)
+    # results.update({'solver': res})
+    #
+    # results = EvaluationHandler.add_solver_gap_to_results(results)
 
     return results
 
@@ -257,7 +271,12 @@ def main(external_config=None):
 
     # get config_file from terminal input
     parse_args = get_perser_args()
+
+    #print("Parse_args", parse_args)
     config_file_path = parse_args.config_file_path
+
+    # parse_args = argparse.Namespace(config_file_path='testing/ppo_masked/energy_fjssp_config_job3_task4_tools0.yaml', plot_ganttchart=True)
+    # config_file_path = "testing/ppo_masked/energy_fjssp_config_job3_task4_tools0.yaml"
 
     # get config and data
     config = load_config(config_file_path, external_config)

@@ -11,8 +11,10 @@ from torch.distributions.categorical import Categorical
 import pickle
 from typing import Tuple, Any, List
 
+from src.environments.energy_env import EnergyEnv
+from src.environments.env_tetris_scheduling import Env
 from src.utils.logger import Logger
-
+from src.utils.energy_fjssp_logger import LoggerForEnergyFJSSP
 # constants
 POLICY_LAYER: List[int] = [256, 256]
 POLICY_ACTIVATION: str = 'ReLU'
@@ -167,7 +169,7 @@ class PolicyNetwork(nn.Module):
         self.policy_net = nn.Sequential(*net_structure)
 
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
-        self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
+        self.device = T.device('cpu')
         self.to(self.device)
 
     def forward(self, observation, action_mask):
@@ -216,7 +218,7 @@ class ValueNetwork(nn.Module):
         self.value_net = nn.Sequential(*net_structure)
 
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
-        self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
+        self.device = T.device('cpu')
         self.to(self.device)
 
     def forward(self, observation):
@@ -261,6 +263,8 @@ class MaskedPPO:
             # self.env.action_space.seed(seed)
             self.env.seed(self.seed)
 
+        print(f'Oberservation Space: {env.observation_space.shape[0]}')
+
         # create networks and buffer
         self.policy_net = PolicyNetwork(env.observation_space.shape[0], env.action_space.n, self.learning_rate,
                                         config.get('policy_layer', POLICY_LAYER),
@@ -304,7 +308,6 @@ class MaskedPPO:
         :param file: Path under which the file will be saved
 
         :return: None
-
         """
         params_dict = self.__dict__.copy()
         del params_dict['logger']
@@ -517,17 +520,32 @@ class MaskedPPO:
             if instances % len(self.env.data) == len(self.env.data) - 1:
                 mean_training_reward = np.mean(self.env.episodes_rewards)
                 mean_training_makespan = np.mean(self.env.episodes_makespans)
-                if len(self.env.episodes_tardinesses) == 0:
-                    mean_training_tardiness = 0
+
+                # Use tardiness metrics if available; otherwise use total energy consumption
+                if hasattr(self.env, 'episodes_tardinesses'):
+                    if len(self.env.episodes_tardinesses) == 0:
+                        mean_training_tardiness = 0
+                    else:
+                        mean_training_tardiness = np.mean(self.env.episodes_tardinesses)
+                    self.logger.record(
+                        {
+                            'results_on_train_dataset/mean_reward': mean_training_reward,
+                            'results_on_train_dataset/mean_makespan': mean_training_makespan,
+                            'results_on_train_dataset/mean_tardiness': mean_training_tardiness
+                        }
+                    )
                 else:
-                    mean_training_tardiness = np.mean(self.env.episodes_tardinesses)
-                self.logger.record(
-                    {
-                        'results_on_train_dataset/mean_reward': mean_training_reward,
-                        'results_on_train_dataset/mean_makespan': mean_training_makespan,
-                        'results_on_train_dataset/mean_tardiness': mean_training_tardiness
-                    }
-                )
+                    if len(self.env.episodes_total_energy_consumptions) == 0:
+                        mean_total_energy_consumption = 0
+                    else:
+                        mean_total_energy_consumption = np.mean(self.env.episodes_total_energy_consumptions)
+                    self.logger.record(
+                        {
+                            'results_on_train_dataset/mean_reward': mean_training_reward,
+                            'results_on_train_dataset/mean_makespan': mean_training_makespan,
+                            'results_on_train_dataset/mean_total_energy_consumption': mean_total_energy_consumption
+                        }
+                    )
                 self.logger.dump()
 
         print("TRAINING DONE")

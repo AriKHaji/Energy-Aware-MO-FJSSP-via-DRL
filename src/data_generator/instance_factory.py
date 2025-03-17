@@ -155,18 +155,26 @@ def main(config_file_name=None, external_config=None):
     # Generate instances
     generated_instances: List[List[Task]] = generate_instances_from_config(current_config)
 
-    # Create instance list
-    instance_list: List[List[Task]] = compute_initial_instance_solution(generated_instances, current_config)
+    if current_config.get('sp_type') == "energy_fjssp":
+        # compute individual hash for each instance
+        SPFactory.compute_and_set_hashes(instances=generated_instances)
 
-    # Assign deadlines in-place
-    SPFactory.set_deadlines_to_max_deadline_per_job(instance_list, current_config.get('num_jobs', None))
+        # Write resulting instance data to file
+        if current_config.get('write_to_file', False):
+            DataHandler.save_instances_data_file(current_config, generated_instances)
+    else:
+        # Create instance list
+        instance_list: List[List[Task]] = compute_initial_instance_solution(generated_instances, current_config)
 
-    # compute individual hash for each instance
-    SPFactory.compute_and_set_hashes(instance_list)
+        # Assign deadlines in-place
+        SPFactory.set_deadlines_to_max_deadline_per_job(instance_list, current_config.get('num_jobs', None))
 
-    # Write resulting instance data to file
-    if current_config.get('write_to_file', False):
-        DataHandler.save_instances_data_file(current_config, instance_list)
+        # compute individual hash for each instance
+        SPFactory.compute_and_set_hashes(instance_list)
+
+        # Write resulting instance data to file
+        if current_config.get('write_to_file', False):
+            DataHandler.save_instances_data_file(current_config, instance_list)
 
 
 def get_parser_args():
@@ -184,7 +192,10 @@ def get_parser_args():
 if __name__ == '__main__':
 
     # get config_file from terminal input
+
     parse_args = get_parser_args()
     config_file_path = parse_args.config_file_path
-
     main(config_file_name=config_file_path)
+
+    #main(config_file_name="data_generation/energy_fjssp/fjssp_config_job3_task4_tools0.yaml")
+

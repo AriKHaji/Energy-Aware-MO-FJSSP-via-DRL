@@ -65,21 +65,38 @@ class IntermediateTest:
             evaluation_results = test_model(self.env_config, self.data_test, model=model, logger=self.logger,
                                             plot=False, log_episode=False, intermediate_test_idx=num_timesteps)
 
+
             # change name back in wandb config
             self.env_config.update({"saved_model_name": self.file})
 
-            rwd_mean = evaluation_results['rew_mean']
-            tardiness_mean = evaluation_results['tardiness_mean']
-            makespan_mean = evaluation_results['makespan_mean']
+            if evaluation_results.keys().__contains__('total_energy_consumption_mean'):
+                rwd_mean = evaluation_results['rew_mean']
+                total_energy_consumption_mean = evaluation_results['total_energy_consumption_mean']
+                makespan_mean = evaluation_results['makespan_mean']
 
-            # log results
-            self.logger.record(
-                {
-                    'interm_test/mean_reward': rwd_mean,
-                    'interm_test/mean_tardiness': tardiness_mean,
-                    'interm_test/mean_makespan': makespan_mean
-                }
-            )
+                # log results
+                self.logger.record(
+                    {
+                        'interm_test/mean_reward': rwd_mean,
+                        'interm_test/total_energy_consumption_mean': total_energy_consumption_mean,
+                        'interm_test/mean_makespan': makespan_mean
+                    }
+                )
+
+            else:
+                rwd_mean = evaluation_results['rew_mean']
+                tardiness_mean = evaluation_results['tardiness_mean']
+                makespan_mean = evaluation_results['makespan_mean']
+
+                # log results
+                self.logger.record(
+                    {
+                        'interm_test/mean_reward': rwd_mean,
+                        'interm_test/mean_tardiness': tardiness_mean,
+                        'interm_test/mean_makespan': makespan_mean
+                    }
+                )
+
             self.logger.dump()
 
             # if first test or reward >= current optimum, reset optimum and save model

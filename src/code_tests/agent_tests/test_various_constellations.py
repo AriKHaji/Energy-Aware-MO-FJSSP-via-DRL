@@ -9,9 +9,9 @@ from src.utils.file_handler.config_handler import ConfigHandler
 # constants
 from src.utils.file_handler.data_handler import DATA_DIRECTORY
 from src.utils.file_handler.config_handler import CONFIG_DIRECTORY
-DEFAULT_DATA_GEN_FILE: str = 'data_generation/jssp/config_job3_task4_tools0.yaml'
+DEFAULT_DATA_GEN_FILE: str = 'data_generation/jssp/fjssp_config_job3_task4_tools0.yaml'
 
-DEFAULT_TRAINING_FILE: str = 'training/dqn/config_job3_task4_tools0.yaml'
+DEFAULT_TRAINING_FILE: str = 'training/dqn/fjssp_config_job3_task4_tools0.yaml'
 
 
 if __name__ == "__main__":

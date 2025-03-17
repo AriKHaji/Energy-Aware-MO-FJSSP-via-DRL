@@ -65,3 +65,5 @@ class Task:
 
     def str_info(self) -> str:
         return f"Job index {self.job_index}\nTask index {self.task_index}\nMachines {str(self.machines)}"
+
+

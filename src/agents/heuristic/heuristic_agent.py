@@ -4,7 +4,7 @@ This module provides the following scheduling heuristics as function:
 - EDD: earliest due date
 - SPT: shortest processing time first
 - MTR: most tasks remaining
-- LTR: least tasks remaining
+- LTR: least tasks
 - Random: random action
 
 You can implement additional heuristics in this file by specifying a function that takes a list of tasks and an action
@@ -232,6 +232,253 @@ def choose_first_machine(chosen_task, machine_mask) -> int:
     return valid_machines[0]
 
 
+def spt_fjssp(tasks: List, action_mask: np.array) -> int:
+    """
+    SPT: Shortest Processing Time first. Determines the job-machine pair where the next unfinished task
+    has the lowest processing time.
+
+    :param tasks: List of EnergyTask objects for the instance.
+    :param action_mask: Composite action mask (flat array) of length num_jobs * num_machines.
+    :return: Composite action (an integer encoding job and machine).
+    """
+    # Use the provided helper to get the next unfinished task for each job.
+    active_task_dict = get_active_task_dict(tasks)
+
+    # Determine the total number of jobs and machines.
+    num_jobs = max(task.job_index for task in tasks) + 1
+    num_machines = len(tasks[0].machines)
+
+    best_action = None
+    best_proc_time = float('inf')
+
+    # Iterate over every possible composite action.
+    for action in range(num_jobs * num_machines):
+        if action_mask[action]:
+            job = action // num_machines
+            machine = action % num_machines
+
+            # Skip if there is no active (unfinished) task for this job.
+            if job not in active_task_dict:
+                continue
+
+            # Retrieve the next unfinished task for the job.
+            task_idx = active_task_dict[job]
+            task = tasks[task_idx]
+
+            # Look up the processing time for the task on the candidate machine.
+            proc_time = task.processing_times.get(machine, float('inf'))
+
+            # If this processing time is the smallest seen so far, select this action.
+            if proc_time < best_proc_time:
+                best_proc_time = proc_time
+                best_action = action
+
+    # Fallback: If no action was found (should not happen), select the first valid action.
+    if best_action is None:
+        valid_actions = np.nonzero(action_mask)[0]
+        best_action = int(valid_actions[0])
+
+    return best_action
+
+
+def lec_fjssp(tasks: List, action_mask: np.array) -> int:
+    """
+    LEC: Lowest energy consumption first.
+    Determines the job-machine combo where the next unfinished task
+    has the lowest energy consumption (processing time * energy factor).
+
+    :param tasks: List of EnergyTask objects for the instance.
+    :param action_mask: Composite action mask (flat array) of length num_jobs * num_machines.
+    :return: Composite action (an integer encoding job and machine).
+    """
+    # Use the helper to get the next unfinished task (active task) per job.
+    active_task_dict = get_active_task_dict(tasks)
+
+    # Determine the number of jobs and machines.
+    num_jobs = max(task.job_index for task in tasks) + 1
+    num_machines = len(tasks[0].machines)
+
+    best_action = None
+    best_energy = float('inf')
+
+    # Iterate over all composite actions.
+    for action in range(num_jobs * num_machines):
+        if action_mask[action]:
+            job = action // num_machines
+            machine = action % num_machines
+
+            # If there's no active task for the job, skip it.
+            if job not in active_task_dict:
+                continue
+
+            task = tasks[active_task_dict[job]]
+            # Get processing time for the task on this machine.
+            processing_time = task.processing_times.get(machine, float('inf'))
+            # Get the energy consumption factor for the task on this machine.
+            energy_factor = task.energy_consumptions.get(machine, float('inf'))
+
+            # Compute the energy consumption for this task-machine pairing.
+            task_energy = processing_time * energy_factor
+
+            if task_energy < best_energy:
+                best_energy = task_energy
+                best_action = action
+
+    # Fallback: if no action was chosen, select the first valid action.
+    if best_action is None:
+        valid_actions = np.nonzero(action_mask)[0]
+        best_action = int(valid_actions[0])
+
+    return best_action
+
+
+def mtr_epst_fjssp(tasks: List, action_mask: np.array) -> int:
+    """
+    MTR_EPST: Most tasks remaining, machine with earliest possible start time.
+
+    For each valid (job, machine) pair, compute:
+      - tasks_remaining = (total tasks for the job) - (active task index)
+      - EPST = max(previous task finish (or 0), machine occupancy)
+
+    Select the action where the job has the most tasks remaining. If multiple actions have
+    the same (maximum) tasks remaining, choose the one with the smallest EPST.
+
+    :param tasks: List of EnergyTask objects.
+    :param action_mask: Flat composite action mask of length num_jobs * num_machines.
+    :return: Composite action (integer encoding job and machine).
+    """
+    # Determine number of machines (assumed from the first task's available machines)
+    num_machines = len(tasks[0].machines)
+
+    # Compute current machine occupancy:
+    # For each machine, occupancy is the maximum finished time of any task scheduled on that machine.
+    occupancy = {m: 0 for m in range(num_machines)}
+    for t in tasks:
+        if t.selected_machine is not None and t.finished is not None:
+            m = t.selected_machine
+            occupancy[m] = max(occupancy[m], t.finished)
+
+    # Compute total tasks per job:
+    total_tasks = {}
+    for t in tasks:
+        job = t.job_index
+        # Track the highest task index seen for each job.
+        total_tasks[job] = max(total_tasks.get(job, 0), t.task_index)
+    # Add one because task indices start at 0.
+    for job in total_tasks:
+        total_tasks[job] = total_tasks[job] + 1
+
+    # Get active (next unfinished) task for each job.
+    active_task_dict = get_active_task_dict(tasks)
+
+    # List to hold tuples: (job, machine, tasks_remaining, EPST, composite_action)
+    valid_actions = []
+    num_jobs = max(t.job_index for t in tasks) + 1
+
+    for action in range(num_jobs * num_machines):
+        if action_mask[action]:
+            job = action // num_machines
+            machine = action % num_machines
+
+            # Skip if this job is already finished.
+            if job not in active_task_dict:
+                continue
+
+            active_task = tasks[active_task_dict[job]]
+            # Compute tasks remaining for this job.
+            tasks_remaining = total_tasks[job] - active_task.task_index
+
+            # Compute previous task finish time.
+            if active_task.task_index == 0:
+                previous_finish = 0
+            else:
+                prev_task = next(
+                    (t for t in tasks if t.job_index == job and t.task_index == active_task.task_index - 1), None)
+                previous_finish = prev_task.finished if (
+                            prev_task is not None and prev_task.finished is not None) else 0
+
+            # EPST: earliest possible start time is the maximum of the previous finish time and the machine's occupancy.
+            epst = max(previous_finish, occupancy.get(machine, 0))
+
+            valid_actions.append((job, machine, tasks_remaining, epst, action))
+
+    # If no valid action is found, fallback to the first valid action.
+    if not valid_actions:
+        valid_actions = [(action, 0, 0, 0, action) for action in np.nonzero(action_mask)[0]]
+
+    # For MTR_EPST: choose the action with the maximum tasks_remaining.
+    max_tasks_remaining = max(item[2] for item in valid_actions)
+    # Filter for actions with this maximum.
+    filtered = [item for item in valid_actions if item[2] == max_tasks_remaining]
+    # Among these, choose the one with the smallest EPST.
+    best = min(filtered, key=lambda x: x[3])
+    return best[4]
+
+
+def ltr_epst_fjssp(tasks: List, action_mask: np.array) -> int:
+    """
+    LTR_EPST: Least tasks remaining, machine with earliest possible start time.
+
+    For each valid (job, machine) pair, compute:
+      - tasks_remaining = (total tasks for the job) - (active task index)
+      - EPST = max(previous task finish (or 0), machine occupancy)
+
+    Select the action where the job has the fewest tasks remaining. In case of ties, choose the one with the smallest EPST.
+
+    :param tasks: List of EnergyTask objects.
+    :param action_mask: Flat composite action mask of length num_jobs * num_machines.
+    :return: Composite action (integer encoding job and machine).
+    """
+    num_machines = len(tasks[0].machines)
+
+    occupancy = {m: 0 for m in range(num_machines)}
+    for t in tasks:
+        if t.selected_machine is not None and t.finished is not None:
+            m = t.selected_machine
+            occupancy[m] = max(occupancy[m], t.finished)
+
+    total_tasks = {}
+    for t in tasks:
+        job = t.job_index
+        total_tasks[job] = max(total_tasks.get(job, 0), t.task_index)
+    for job in total_tasks:
+        total_tasks[job] = total_tasks[job] + 1
+
+    active_task_dict = get_active_task_dict(tasks)
+    valid_actions = []
+    num_jobs = max(t.job_index for t in tasks) + 1
+
+    for action in range(num_jobs * num_machines):
+        if action_mask[action]:
+            job = action // num_machines
+            machine = action % num_machines
+            if job not in active_task_dict:
+                continue
+
+            active_task = tasks[active_task_dict[job]]
+            tasks_remaining = total_tasks[job] - active_task.task_index
+
+            if active_task.task_index == 0:
+                previous_finish = 0
+            else:
+                prev_task = next(
+                    (t for t in tasks if t.job_index == job and t.task_index == active_task.task_index - 1), None)
+                previous_finish = prev_task.finished if (
+                            prev_task is not None and prev_task.finished is not None) else 0
+
+            epst = max(previous_finish, occupancy.get(machine, 0))
+            valid_actions.append((job, machine, tasks_remaining, epst, action))
+
+    if not valid_actions:
+        valid_actions = [(action, 0, 0, 0, action) for action in np.nonzero(action_mask)[0]]
+
+    # For LTR_EPST: choose the action with the minimum tasks_remaining.
+    min_tasks_remaining = min(item[2] for item in valid_actions)
+    filtered = [item for item in valid_actions if item[2] == min_tasks_remaining]
+    best = min(filtered, key=lambda x: x[3])
+    return best[4]
+
+
 class HeuristicSelectionAgent:
     """
     This class can be used to get the next task according to the heuristic passed as string abbreviation (e.g. EDD).
@@ -264,7 +511,12 @@ class HeuristicSelectionAgent:
             'EDD': edd,
             'SPT': spt,
             'MTR': mtr,
-            'LTR': ltr
+            'LTR': ltr,
+
+            'LEC': lec_fjssp,
+            'SPT_FJSSP': spt_fjssp,
+            'MTR_EPST': mtr_epst_fjssp,
+            'LTR_EPST': ltr_epst_fjssp
         }
 
     def __call__(self, tasks: List, action_mask: np.array, task_selection: str) -> int:

@@ -29,7 +29,7 @@ class TestGanttChart(unittest.TestCase):
         :return: None
         """
 
-        env_config = ConfigHandler.get_config(config_file_path='training/dqn/config_job3_task4_tools0.yaml')
+        env_config = ConfigHandler.get_config(config_file_path='training/dqn/fjssp_config_job3_task4_tools0.yaml')
         data = DataHandler.load_instances_data_file(config=env_config)
         cls._test_tasks = copy.deepcopy(data[0])
 

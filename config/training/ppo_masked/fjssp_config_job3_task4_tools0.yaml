@@ -8,7 +8,7 @@ algorithm: ppo_masked
 instances_file: fjssp/config_job3_task4_tools0.pkl
 # (O)   [string]  The finished model is saved under this name. Alternatively set to <automatic>, then it will be
                   # replaced with the current DayMonthYearHourMinute
-saved_model_name: example_ppo_masked_agent
+saved_model_name: automatic
 # (R)   [int]     Seed for all pseudo random generators (random, numpy, torch)
 seed: 2
 # (O)   [bool]    Bool, if the train-test-split of instances should remain the same (1111) and be independent of the
@@ -23,7 +23,7 @@ experiment_save_path: models
 # (O)   [int]:    Wandb mode choose: choose from [0: no wandb, 1: wandb_offline, 2: wandb_online]
 wandb_mode: 0
 # (O)   [string]  Set a wandb project where you want to upload all wandb logs
-wandb_project: ppo_test
+wandb_project: jssp_energy
 
 # --- PPO parameter ---
 # (O)   [int]     Number of steps collected before PPO updates the policy again
@@ -53,16 +53,16 @@ value_activation: 'ReLU'
 # (R)   [int]     Maximum number of instances shown to the agent. Limits the training process. Note that instances may be
                   # multiple times, if total_instances is larger than the number of generated instances
 # (R) [int] Maximum number of instances shown to the agent. Limits the training process
-total_instances: 10_000
+total_instances: 1000
 # (R)   [int]     Maximum number of steps that the agent can interact with the env. Limits the training process
-total_timesteps: 1_000_000
+total_timesteps: 20_000_000_000
 # (R)   [float]   Range between 0 and 1. How much (percentually) of the generated data will be used for training.
 train_test_split: 0.8
 # (R)   [float]   Range between 0 and 1. How much (percentually) of the remaining data (1-train_test_split) will be
                   # used for training.
 test_validation_split: 0.8
 # (R)   [int]     Number of environment step calls between intermediate (validation) tests
-intermediate_test_interval: 10_000
+intermediate_test_interval: 10_000_000
 
 # --- env (Environment) parameter ---
 # (R)   [str]     Environment you want to use. The vanilla case is env_tetris_scheduling.

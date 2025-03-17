@@ -124,7 +124,7 @@ class Policy(nn.Module):
         self.q_net = nn.Sequential(*net_structure)
 
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
-        self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
+        self.device = T.device('cpu')
         self.to(self.device)
 
     def forward(self, obs):

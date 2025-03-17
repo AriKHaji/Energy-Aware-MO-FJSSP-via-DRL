@@ -86,13 +86,13 @@ config/testing/ppo_masked/*
 !config/data_generation/fjssp/config_job3_task4_tools0.yaml
 !config/training/dqn/config_job3_task4_tools0.yaml
 !config/training/ppo/config_job3_task4_tools0.yaml
-!config/training/ppo_masked/config_job3_task4_tools0.yaml
+!config/training/ppo_masked/fjssp_config_job3_task4_tools0.yaml
 !config/training/dqn/schema.json
 !config/training/ppo/schema.json
 !config/training/ppo_masked/schema.json
 !config/testing/dqn/config_job3_task4_tools0.yaml
 !config/testing/ppo/config_job3_task4_tools0.yaml
-!config/testing/ppo_masked/config_job3_task4_tools0.yaml
+!config/testing/ppo_masked/energy_fjssp_config_job3_task4_tools0.yaml
 !config/testing/dqn/schema.json
 !config/testing/ppo/schema.json
 !config/testing/ppo_masked/schema.json

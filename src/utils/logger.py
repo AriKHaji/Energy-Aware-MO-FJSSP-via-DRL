@@ -21,21 +21,11 @@ LOG_MODE and WANDB_PROJECT can also be set in training config.
 """
 import os
 import wandb
+import pickle
 from typing import Dict, Any, List
 from collections import defaultdict
 from pathlib import Path
 import PIL.Image
-
-
-# Constants
-LOG_MODE_DEFAULT: int = 0
-WANDB_PROJECT: str = 'project-1'
-WANDB_ENTITY: str = 'scheduling-sandbox-1'
-WANDB_DIRECTORY: Path = Path(__file__).parent.parent.parent / 'data'
-WANDB_TABLE_COLUMNS: List[str] = ["Agent", "Reward", "Makespan", "Tardiness", "Ganttchart"]
-WANDB_FINAL_EVALUATION_TABLE_COLUMNS: List[str] = ['Agent', 'Mean Reward', 'Mean Tardiness', 'Tardiness Max',
-                                                   'Mean Makespan', 'Makespan STD', 'Tardiness STD', 'Gap To Solver']
-
 
 class Logger:
     """
@@ -47,9 +37,21 @@ class Logger:
 
     """
     def __init__(self, config: dict):
-        self.log_mode = config.get('wandb_mode', LOG_MODE_DEFAULT)
+        # Constants
+        self.LOG_MODE_DEFAULT: int = 0
+        self.WANDB_PROJECT: str = 'jssp_energy'
+        self.WANDB_ENTITY: str = 'simpro'
+        self.WANDB_DIRECTORY: Path = Path(__file__).parent.parent.parent / 'data'
+        self.WANDB_TABLE_COLUMNS: List[str] = ["Agent", "Reward", "Makespan", "Tardiness", "Ganttchart"]
+        self.WANDB_FINAL_EVALUATION_TABLE_COLUMNS: List[str] = ['Instances', 'Agent', 'Mean Reward', 'Mean Tardiness', 'Tardiness Max',
+                                                           'Mean Makespan', 'Makespan STD', 'Tardiness STD',
+                                                           'Gap To Solver']
+
+        self.log_mode = config.get('wandb_mode', self.LOG_MODE_DEFAULT)
         self.record_buffer: Dict[str, Any] = defaultdict(Any)
         self.config = config
+        self.amount_of_instances = None
+
 
         self.wandb_run = None
         self.wandb_table = None
@@ -131,8 +133,8 @@ class Logger:
             # Set wandb mode offline if requested (has to be set before calling wandb.init())
             if self.log_mode == 1:
                 os.environ['WANDB_MODE'] = 'offline'
-            self.wandb_run = wandb.init(project=self.config.get('wandb_project', WANDB_PROJECT), entity=WANDB_ENTITY,
-                                        config=self.config, reinit=True, dir=WANDB_DIRECTORY)
+            self.wandb_run = wandb.init(project=self.config.get('wandb_project', self.WANDB_PROJECT), entity=self.WANDB_ENTITY,
+                                        config=self.config, reinit=True, dir=self.WANDB_DIRECTORY)
 
             # overwrite logger config with wandb config (e.g. for the case wandb config was changed by sweep)
             self.config = dict(wandb.config.items())
@@ -170,7 +172,7 @@ class Logger:
         if self.wandb_run:
             # create table if not existing
             if not self.wandb_table:
-                self.wandb_table = wandb.Table(columns=WANDB_TABLE_COLUMNS)
+                self.wandb_table = wandb.Table(columns=self.WANDB_TABLE_COLUMNS)
 
             # add data to wandb table
             log_data = [agent]
@@ -190,10 +192,11 @@ class Logger:
 
         """
         if self.wandb_run:
-            final_evaluation_table = wandb.Table(columns=WANDB_FINAL_EVALUATION_TABLE_COLUMNS)
+            final_evaluation_table = wandb.Table(columns=self.WANDB_FINAL_EVALUATION_TABLE_COLUMNS)
             # iterate overall all agent whose results are saved in evaluation_results
             for agent in evaluation_results.keys():
                 log_data = []
+                log_data.append("Instances: "+ str(self.amount_of_instances))
                 log_data.append(str(agent))
                 log_data.append(evaluation_results[agent]['rew_mean'])
                 log_data.append(evaluation_results[agent]['tardiness_mean'])

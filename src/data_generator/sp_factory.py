@@ -6,10 +6,13 @@ from enum import Enum
 from typing import List, Tuple
 import itertools
 import random
+from rich.console import Console
+from rich.table import Table
 
 # Library import
 import numpy as np
 
+from src.data_generator.energy_task import EnergyTask
 # Functional internal import
 from src.data_generator.task import Task
 
@@ -17,6 +20,8 @@ from src.data_generator.task import Task
 class SP(Enum):
     jssp = "_generate_instance_jssp"
     fjssp = "_generate_instance_fjssp"
+    energy_fjssp = "_generate_instance_energy_fjssp"  # New sp_type
+
 
     @classmethod
     def is_sp_type_implemented(cls, sp_type: str = "") -> bool:
@@ -85,6 +90,11 @@ class SPFactory:
         # Print information
         if print_info:
             print('Number of generated task combinations:', len(task_combinations))
+
+        if sp_type == "energy_fjssp":
+            visualize_instance(instances[0], num_jobs)
+        else:
+            visualize_regular_instance(instances[0], num_jobs)
 
         return instances
 
@@ -172,6 +182,57 @@ class SPFactory:
         return instance
 
     @classmethod
+    def _generate_instance_energy_fjssp(cls, task_combinations: List[Tuple[int]], num_jobs: int, num_tasks: int,
+                                        num_machines: int, num_tools: int, **kwargs) -> List[Task]:
+        """
+        Generates an energy-aware fjssp instance.
+        Each task can run on a subset of machines. For each task:
+          - A random number (between 1 and num_machines) of machines is selected.
+          - The available machine indices are converted into a binary mask of length num_machines.
+          - For each available machine, an energy consumption value is assigned.
+        """
+        instance = []
+        # Get energy consumption values from kwargs or use defaults.
+        energy_values = kwargs.get('energy_consumptions', [0.5, 0.8, 1.0, 1.2])
+        runtime_values = kwargs.get('runtime_values', [2, 4, 6, 8, 10])
+        for j in range(num_jobs):
+            for t in range(num_tasks):
+                # Pick a random task combination for runtime and tool requirements.
+                task_tuple = list(task_combinations[np.random.randint(0, len(task_combinations) - 1)])
+                runtime_value = task_tuple[2]
+                tools_value = list(task_tuple[1])
+
+                # Randomly determine the number of available machines (between 1 and num_machines).
+                x = random.randint(1, num_machines)
+                available_machines = sorted(random.sample(range(num_machines), x))
+
+                # Create a binary mask of length num_machines.
+                binary_mask = [1 if i in available_machines else 0 for i in range(num_machines)]
+
+                # For each available machine, assign an energy consumption value.
+                energy_mapping = {machine: random.choice(energy_values) for machine in available_machines}
+                processing_times_mapping = {machine: random.choice(runtime_values) for machine in available_machines}
+
+                # Create the Task instance with the binary mask.
+                task = EnergyTask(
+                    job_index=j,
+                    task_index=t,
+                    machines=binary_mask,
+                    tools=tools_value,
+                    deadline=0,
+                    done=False,
+                    _n_machines=num_machines,
+                    _n_tools=num_tools,
+                    energy_consumptions=energy_mapping,
+                    processing_times=processing_times_mapping
+                )
+                # Attach the energy consumption mapping.
+                #task.energy_consumptions = energy_mapping
+                instance.append(task)
+
+        return instance
+
+    @classmethod
     def set_deadlines_to_max_deadline_per_job(cls, instances: List[List[Task]], num_jobs: int):
         """
         Equals all Task deadlines from one Job according to the one of the last task in the job
@@ -204,6 +265,67 @@ class SPFactory:
             # set hash attributes of each task
             for task in instance:
                 task.instance_hash = instance_hash
+
+def visualize_instance(instance, num_jobs):
+    """
+    Visualizes a single instance using a rich table.
+
+    instance: list of Task objects in the instance.
+    num_jobs: total number of jobs in this instance.
+    """
+    # Group tasks by job index.
+    jobs = {}
+    for task in instance:
+        jobs.setdefault(task.job_index, []).append(task)
+
+    console = Console()
+
+    for job_index in range(num_jobs):
+        tasks = jobs.get(job_index, [])
+        table = Table(title=f"Job {job_index}", show_lines=True)
+
+        table.add_column("Task #", justify="left")
+        table.add_column("Machine Mask", justify="center")
+        table.add_column("Processing Times", justify="center")
+        table.add_column("Energy Consumptions", justify="center")
+
+        for task in sorted(tasks, key=lambda t: t.task_index):
+            machine_mask = str(task.machines)
+            processing_times = str(task.processing_times)
+            energy = str(getattr(task, 'energy_consumptions', {}))
+            table.add_row(str(task.task_index), machine_mask, processing_times, energy)
+
+        console.print(table)
+
+
+def visualize_regular_instance(instance: list, num_jobs: int):
+    """
+    Visualizes a single instance of regular tasks (without energy consumption data) using a rich table.
+
+    instance: List of Task objects.
+    num_jobs: Total number of jobs in this instance.
+    """
+    # Group tasks by job index.
+    jobs = {}
+    for task in instance:
+        jobs.setdefault(task.job_index, []).append(task)
+
+    console = Console()
+
+    for job_index in range(num_jobs):
+        tasks = jobs.get(job_index, [])
+        table = Table(title=f"Job {job_index}", show_lines=True)
+
+        table.add_column("Task #", justify="left")
+        table.add_column("Machine Mask", justify="center")
+        table.add_column("Runtime", justify="center")
+
+        for task in sorted(tasks, key=lambda t: t.task_index):
+            machine_mask = str(task.machines)
+            runtime = str(task.runtime)
+            table.add_row(str(task.task_index), machine_mask, runtime)
+
+        console.print(table)
 
 
 if __name__ == '__main__':

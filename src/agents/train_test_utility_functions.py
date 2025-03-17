@@ -6,7 +6,7 @@ TIMESTAMP: str: timestamp of the training run, used for the creation of a unique
 AGENT_DICT: dict[str, str]: This dictionary is used to map algorithm identifiers (keys)
 to their actual class names (values).
 
-E.g. to use the MaskedPPO class, you can use ppo as algorithm in the config.
+E.g. to use the MaskedPPO class, you can use po as algorithm in the config.
 
 If you add new algorithms, you can extend this dictionary to assign your algorithm class a short identifier.
 

@@ -11,6 +11,8 @@ from src.data_generator.task import Task
 from src.visuals_generator.gantt_chart import GanttChartPlotter
 from typing import List, Tuple, Dict, Any, Union
 
+import sys
+
 REWARD_BUFFER_SIZE = 250
 
 
@@ -141,6 +143,8 @@ class Env(gym.Env):
         selected_job_vector = self.to_one_hot(action, self.num_jobs)
         self.action_history.append(action)
 
+        # print("Step Function: \n      Last Mask -> ", self.last_mask)
+
         # check if the action is valid/executable
         if self.check_valid_job_action(selected_job_vector, self.last_mask):
             # if the action is valid/executable/schedulable
@@ -148,7 +152,10 @@ class Env(gym.Env):
             selected_machine = self.choose_machine(selected_task)
             self.execute_action(action, selected_task, selected_machine)
         else:
-            # if the action is not valid/executable/scheduable
+            # selected_task_id, selected_task = self.get_selected_task(action)
+            # print("FEHLER: Action {} is not valid".format(action))
+            # print("    Ausgewählter Job:" + selected_task.__str__())
+            # sys.exit()
             pass
 
         # update variables and track reward
@@ -166,6 +173,7 @@ class Env(gym.Env):
 
             self.episodes_makespans.append(self.get_makespan())
             self.episodes_rewards.append(np.mean(self.reward_history))
+            self.episodes_tardinesses.append(tardiness)
 
             self.logging_rewards.append(episode_reward_sum)
             self.logging_makespans.append(makespan)
@@ -303,6 +311,14 @@ class Env(gym.Env):
         :return: None
 
         """
+        # print("execute_action Function:"
+        #       "  \n      a valid action is: " + task.__str__() + ", machine id: " + machine_id.__str__() +
+        #       "  \n      The " + task.__str__() + " could also run on the machines " + task.machines.__str__() )
+        # invalid_machine_actions = 0
+        # if not task.machines[machine_id]:
+        #     invalid_machine_actions += 1
+        # print("Invalid Machine Count: " + str(invalid_machine_actions))
+
         # check task preceding in the job (if it is not the first task within the job)
         if task.task_index == 0:
             start_time_of_preceding_task = 0
@@ -366,6 +382,7 @@ class Env(gym.Env):
         if self.reward_strategy == 'dense_makespan_reward':
             # dense reward for makespan optimization according to https://arxiv.org/pdf/2010.12367.pdf
             reward = self.makespan - self.get_makespan()
+            #print("reward = self.makespan: " + str(self.makespan) + " - self.get_makespan(): " + str(self.get_makespan()) + " = " + str(reward))
             self.makespan = self.get_makespan()
         elif self.reward_strategy == 'sparse_makespan_reward':
             reward = self.sparse_makespan_reward()

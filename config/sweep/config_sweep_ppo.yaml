@@ -20,4 +20,4 @@ command:
   - -m
   - src.agents.train
   - -fp
-  - training/ppo_masked/config_job3_task4_tools0.yaml
+  - training/ppo_masked/fjssp_config_job3_task4_tools0.yaml

@@ -8,6 +8,7 @@ Using this file requires a training config. For example, you have to specify the
 There are several constants, which you can change to adapt the training process:
 """
 # OS imports
+import os
 import argparse
 from typing import List
 import numpy as np
@@ -16,7 +17,9 @@ from sklearn.model_selection import train_test_split
 # Functional imports
 from src.agents import intermediate_test
 from src.agents import test
+from src.agents.reinforcement_learning import MaskedPPO
 from src.environments.environment_loader import EnvironmentLoader
+from src.utils.energy_fjssp_logger import LoggerForEnergyFJSSP
 from src.utils.file_handler.data_handler import DATA_DIRECTORY
 from src.utils.file_handler.model_handler import ModelHandler
 from src.data_generator.task import Task
@@ -42,9 +45,19 @@ def final_evaluation(config: dict, data_test: List[List[Task]], logger: Logger):
     # test model
     # create anv and agent
     agent = get_agent_class_from_config(config)
-    best_model = agent.load(file=best_model_path, config=config, logger=logger)
-    evaluation_results = test.test_model_and_heuristic(config=config, model=best_model, data_test=data_test,
-                                                       logger=logger, plot_ganttchart=False, log_episode=True)
+    try:
+        print("Trying best model")
+        best_model = agent.load(file=best_model_path, config=config, logger=logger)
+        evaluation_results = test.test_model_and_heuristic(config=config, model=best_model, data_test=data_test,
+                                                           logger=logger, plot_ganttchart=False, log_episode=True)
+    except Exception as e:
+        print("Best model incompatible, now using the model itself")
+        model_name = config.get('saved_model_name')
+        model_path = '../../PycharmProjects/schlably/data/models/' + model_name
+        model = agent.load(file=model_path, config=config, logger=logger)
+        evaluation_results = test.test_model_and_heuristic(config=config, model=model, data_test=data_test,
+                                                           logger=logger, plot_ganttchart=False, log_episode=True)
+    logger.dump()
 
     # log the metric which you find most relevant (this should be used to optimize a hyperparameter sweep)
     success_metric = evaluation_results['agent'][config.get('success_metric')]
@@ -71,8 +84,20 @@ def training(config: dict, data_train: List[List[Task]], data_val: List[List[Tas
     # create Environment
     env, _ = EnvironmentLoader.load(config, data=data_train)
 
-    # create Agent model
-    agent = get_agent_class_from_config(config)(env=env, config=config, logger=logger)
+    model_name = config.get('saved_model_name')
+    model_path = '../../PycharmProjects/schlably/data/models/' + model_name
+
+    # Load or create model
+    if os.path.exists(model_path + '.pkl'):
+        agent = MaskedPPO.load(model_path, config, logger)
+    else:
+        agent = MaskedPPO(env=env, config=config, logger=logger)
+
+    # relative_path = os.path.join('..', '..', 'data', 'models', model_name)
+    # absolute_path = os.path.abspath(relative_path)
+    # print("Absolute Path" + absolute_path)
+    # print("Relative Path" + relative_path)
+
 
     # create IntermediateTest class to save new optimum model every <n_test_steps> steps
     inter_test = intermediate_test.IntermediateTest(env_config=config,
@@ -80,8 +105,10 @@ def training(config: dict, data_train: List[List[Task]], data_val: List[List[Tas
                                                     data=data_val, logger=logger)
 
     # Actual "learning" or "training" phase
-    agent.learn(total_instances=config['total_instances'], total_timesteps=config['total_timesteps'],
+    agent.learn(total_instances=1, total_timesteps=config['total_timesteps'],
                 intermediate_test=inter_test)
+
+    agent.save(model_path)
 
 
 def main(config_file_name: dict = None, external_config: dict = None) -> None:
@@ -100,7 +127,7 @@ def main(config_file_name: dict = None, external_config: dict = None) -> None:
     data = load_data(config)
 
     # create logger and update config
-    logger = Logger(config=config)
+    logger = LoggerForEnergyFJSSP(config=config) if config.get('environment') == 'energy_env' else Logger(config=config)
     config = logger.config
 
     # Random seed for numpy as given by config
@@ -113,6 +140,8 @@ def main(config_file_name: dict = None, external_config: dict = None) -> None:
     test_data, val_data = train_test_split(
         test_data, train_size=config.get('test_validation_split'), random_state=split_random_seed)
 
+    logger.amount_of_instances = len(train_data)
+
     # log data
     logger.log_wandb_artifact({'name': 'dataset', 'type': 'dataset',
                                'description': 'job_config dataset, split into test, train and validation',
@@ -122,6 +151,7 @@ def main(config_file_name: dict = None, external_config: dict = None) -> None:
                               )
     # training
     training(config=config, data_train=train_data, data_val=val_data, logger=logger)
+
 
     # evaluate results
     final_evaluation(config=config, data_test=test_data, logger=logger)
@@ -146,4 +176,7 @@ if __name__ == "__main__":
     parse_args = get_perser_args()
     config_file_path = parse_args.config_file_path
 
+    print(config_file_path)
     main(config_file_name=config_file_path)
+
+    #main("training/ppo_masked/energy_fjssp_config_job3_task4_tools0.yaml")
