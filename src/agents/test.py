@@ -275,6 +275,7 @@ def main(external_config=None):
     #print("Parse_args", parse_args)
     config_file_path = parse_args.config_file_path
 
+
     # parse_args = argparse.Namespace(config_file_path='testing/ppo_masked/energy_fjssp_config_job3_task4_tools0.yaml', plot_ganttchart=True)
     # config_file_path = "testing/ppo_masked/energy_fjssp_config_job3_task4_tools0.yaml"
 
@@ -289,11 +290,14 @@ def main(external_config=None):
     best_model_path = ModelHandler.get_best_model_path(config)
 
     # create logger
-    logger = Logger(config=config)
+    logger = LoggerForEnergyFJSSP(config=config) if config.get('environment') == 'energy_env' else Logger(config=config)
     model = get_agent_class_from_config(config=config).load(file=best_model_path, config=config, logger=logger)
     results = test_model_and_heuristic(config=config, model=model, data_test=data,
-                                       plot_ganttchart=parse_args.plot_ganttchart, logger=logger)
+                                       plot_ganttchart=parse_args.plot_ganttchart, logger=logger, log_episode=True)
+    logger.dump()
     print(results)
+
+    logger.write_to_wandb_summary(results)
     plt.show()
 
 

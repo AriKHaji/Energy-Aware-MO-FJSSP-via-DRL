@@ -5,6 +5,9 @@ import numpy
 from gym import spaces
 import numpy as np
 import copy
+
+from torch.distributed.rpc import new_method
+
 from src.data_generator.energy_task import EnergyTask
 from src.visuals_generator.gantt_chart import GanttChartPlotter
 from typing import List, Tuple, Dict, Any, Union
@@ -89,7 +92,7 @@ class EnergyEnv(gym.Env):
         self.observation_space: spaces.Box = spaces.Box(low=0, high=1, shape=observation_shape)
 
         # reward parameters
-        self.reward_strategy = config.get('reward_strategy', 'dense_makespan_reward')
+        self.reward_strategy = config.get('reward_strategy', 'rs3')
         self.reward_scale = config.get('reward_scale', 1)
         self.mr2_reward_buffer: List[List] = [[] for _ in range(len(data))]  # needed for m2r reward only
 
@@ -434,7 +437,7 @@ class EnergyEnv(gym.Env):
 
         scheduled_tasks = [task for task in self.tasks if task.selected_machine is not None]
         for task in scheduled_tasks:
-            total_processing_energy += task.processing_times.get(task.selected_machine) * task.energy_consumptions.get(task.selected_machine)
+            total_processing_energy += task.energy_consumptions.get(task.selected_machine)
 
         return total_processing_energy
 
@@ -447,53 +450,6 @@ class EnergyEnv(gym.Env):
         total_processing_energy = self.calculate_processing_energy()
 
         return total_idle_energy + total_processing_energy
-
-    def compute_reward(self) -> float:
-        """
-        Calculates the reward that will later be returned to the agent. Uses the self.reward_strategy string to
-        discriminate between different reward strategies. Default is 'dense_reward'.
-
-        :return: Reward
-
-        """
-        if self.reward_strategy == 'dense_makespan_reward':
-            # dense reward for makespan optimization according to https://arxiv.org/pdf/2010.12367.pdf
-
-            makespan = self.get_makespan()
-
-            # Reward for Makespan:
-            # the longer the makespan get, the stronger the punishment gets
-            reward1 = -(self.makespan - makespan) ** 2
-            self.makespan = makespan
-
-            # Compute the standard deviation of the machine workloads
-            workloads = self.ends_of_machine_occupancies  # an array of finish times per machine
-            std_workload = np.std(workloads)
-
-            # Reward for parallelization by equal machine workload
-            reward_balance = - (std_workload ** 2)  # Squared so that larger differences are penalized more
-
-            ## Extra final reward depending on how the agent did, 35 is a value that heuristics can easily achieve
-            # if self.check_done():
-            #     reward1 += ((35) - makespan ) * 1000
-
-            ### Energy Consumption
-            total_energy_consumption = self.calculate_energy_consumption()
-            reward2 = self.total_energy_consumption - total_energy_consumption
-            self.total_energy_consumption = total_energy_consumption
-
-            energy_scalar = 1 /(self.num_jobs * self.num_machines)
-            reward = reward1 +  energy_scalar * reward2 + reward_balance
-
-        elif self.reward_strategy == 'sparse_makespan_reward':
-            # TODO
-            reward = 0
-        else:
-            raise NotImplementedError(f'The reward strategy {self.reward_strategy} has not been implemented.')
-
-        reward *= self.reward_scale
-
-        return reward
 
 
     def check_done(self) -> bool:
@@ -548,3 +504,84 @@ class EnergyEnv(gym.Env):
             return GanttChartPlotter.get_gantt_chart_image(self.tasks)
         else:
             raise NotImplementedError(f"The Environment on which you called render doesn't support mode: {mode}")
+
+
+    def compute_reward(self) -> float:
+        """
+        Calculates the reward that will later be returned to the agent. Uses the self.reward_strategy string to
+        discriminate between different reward strategies. Default is 'rs3'.
+
+        :return: Reward
+
+        """
+        prev_makespan = self.makespan
+        new_makespan = self.get_makespan()
+        self.makespan = new_makespan
+
+        prev_total_energy_consumption = self.total_energy_consumption
+        new_total_energy_consumption = self.calculate_energy_consumption()
+        s = 1 / (self.num_jobs * self.num_machines) # Scaling Factor for Energy Consumption
+        self.total_energy_consumption = new_total_energy_consumption
+
+        reward = 0
+
+        if self.reward_strategy == 'rs1':
+            reward = self.compute_rs1(prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s)
+        elif self.reward_strategy == 'rs2':
+            reward = self.compute_rs2(prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s)
+        elif self.reward_strategy == 'rs3':
+            reward = self.compute_rs3(prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s)
+        elif self.reward_strategy == 'rs4':
+            reward = self.compute_rs4(prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s)
+        elif self.reward_strategy == 'rs5':
+            reward = self.compute_rs5(prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s)
+        elif self.reward_strategy == 'rs6':
+            reward = self.compute_rs6(prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s)
+
+        reward *= self.reward_scale
+
+        return reward
+
+
+    def compute_rs1(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
+        return prev_makespan - new_makespan
+
+    def compute_rs2(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
+        reward1 = prev_makespan - new_makespan
+        reward2 = prev_total_energy_consumption - new_total_energy_consumption
+        return reward1 + s * reward2
+
+    def compute_rs3(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
+        reward1 = - ((prev_makespan - new_makespan) ** 2)
+        reward2 = - ((prev_total_energy_consumption - new_total_energy_consumption) ** 2)
+        return reward1 + s * reward2
+
+    def compute_rs4(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
+        reward1 = -(prev_makespan - new_makespan) ** 2
+        reward2 = prev_total_energy_consumption - new_total_energy_consumption
+
+        # Additionally, Reward for parallelization by equal machine workload
+        workloads = self.ends_of_machine_occupancies  # an array of finish times per machine
+        std_workload = np.std(workloads)
+        additional_reward = - (std_workload ** 2)  # Squared so that larger differences are penalized more
+
+        return reward1 + s * reward2 + additional_reward
+
+    def compute_rs5(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
+        reward1 = -((prev_makespan - new_makespan) ** 2)
+        reward2 = -((prev_total_energy_consumption - new_total_energy_consumption) ** 2)
+
+        reward = reward1 + s * reward2
+
+        if self.check_done():
+            reward += - new_makespan - s * new_total_energy_consumption
+
+        return reward
+
+    def compute_rs6(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
+        if not self.check_done():
+            return 0
+        else:
+            reward1 = - new_makespan
+            reward2 = - new_total_energy_consumption
+            return reward1 + s * reward2

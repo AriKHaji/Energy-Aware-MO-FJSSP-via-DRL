@@ -11,10 +11,8 @@ from torch.distributions.categorical import Categorical
 import pickle
 from typing import Tuple, Any, List
 
-from src.environments.energy_env import EnergyEnv
-from src.environments.env_tetris_scheduling import Env
 from src.utils.logger import Logger
-from src.utils.energy_fjssp_logger import LoggerForEnergyFJSSP
+
 # constants
 POLICY_LAYER: List[int] = [256, 256]
 POLICY_ACTIVATION: str = 'ReLU'

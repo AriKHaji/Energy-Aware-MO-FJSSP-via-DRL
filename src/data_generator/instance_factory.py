@@ -29,6 +29,8 @@ DEADLINE_HEURISTIC = 'rand'
 SEED = 0
 
 
+
+
 def generate_instances_from_config(config: dict, print_info: bool = False) -> List[List[Task]]:
     """
     Generates a list of raw scheduling instances according to the console
@@ -155,7 +157,7 @@ def main(config_file_name=None, external_config=None):
     # Generate instances
     generated_instances: List[List[Task]] = generate_instances_from_config(current_config)
 
-    if current_config.get('sp_type') == "energy_fjssp":
+    if current_config.get('sp_type') == "energy_fjssp_benchmark":
         # compute individual hash for each instance
         SPFactory.compute_and_set_hashes(instances=generated_instances)
 
@@ -197,5 +199,5 @@ if __name__ == '__main__':
     config_file_path = parse_args.config_file_path
     main(config_file_name=config_file_path)
 
-    #main(config_file_name="data_generation/energy_fjssp/fjssp_config_job3_task4_tools0.yaml")
+    #main(config_file_name="data_generation/energy_fjssp_benchmark/fjssp_config_job3_task4_tools0.yaml")
 

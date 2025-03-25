@@ -55,11 +55,13 @@ def final_evaluation(config: dict, data_test: List[List[Task]], logger: Logger):
         model_name = config.get('saved_model_name')
         model_path = '../../PycharmProjects/schlably/data/models/' + model_name
         model = agent.load(file=model_path, config=config, logger=logger)
+        print("Model with " + str(model.env.num_jobs) + " Jobs")
+
         evaluation_results = test.test_model_and_heuristic(config=config, model=model, data_test=data_test,
                                                            logger=logger, plot_ganttchart=False, log_episode=True)
     logger.dump()
 
-    # log the metric which you find most relevant (this should be used to optimize a hyperparameter sweep)
+    # log the metric which you find most< relevant (this should be used to optimize a hyperparameter sweep)
     success_metric = evaluation_results['agent'][config.get('success_metric')]
     logger.record({'success_metric': success_metric})
     logger.dump()
@@ -105,7 +107,7 @@ def training(config: dict, data_train: List[List[Task]], data_val: List[List[Tas
                                                     data=data_val, logger=logger)
 
     # Actual "learning" or "training" phase
-    agent.learn(total_instances=1, total_timesteps=config['total_timesteps'],
+    agent.learn(total_instances=config['total_instances'], total_timesteps=config['total_timesteps'],
                 intermediate_test=inter_test)
 
     agent.save(model_path)

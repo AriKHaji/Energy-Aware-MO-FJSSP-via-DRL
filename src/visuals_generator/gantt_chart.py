@@ -10,6 +10,7 @@ from matplotlib import pyplot
 import numpy as np
 import PIL.Image
 
+from src.data_generator.energy_task import EnergyTask
 from src.data_generator.sp_factory import Task
 from src.utils.ui_tools.progressbar import progressbar
 
@@ -80,70 +81,79 @@ class GanttChartPlotter:
         :return: Gantt chart image
 
         """
-        # Set important variables
-        # Overall makespan of the schedule (+ 1 so that the Gantt Chart x-axis is complete)
-        #makespan = max([task.finished for task in tasks]) + 1
-        makespan: int = max([task.finished for task in tasks if task.finished is not None]) + 1 \
+        makespan = max([task.finished for task in tasks if task.finished is not None]) + 1 \
             if overall_makespan is None else overall_makespan
-        # Number of machines available in the schedule
-        num_machines: int = len(tasks[0].machines) \
+
+        num_machines = len(tasks[0].machines) \
             if overall_num_machines is None else overall_num_machines
-        # Task position in original list
-        task_position_list: List[int] = list(range(len(tasks))) \
+
+        task_position_list = list(range(len(tasks))) \
             if overall_task_position_list is None else overall_task_position_list
 
-        # Plot figure settings
-        fig, gnt = pyplot.subplots(figsize=(30 * (makespan / 50), 10), dpi=quality_dpi)
+        # Explicitly set 16:9 aspect ratio
+        fig, gnt = pyplot.subplots(figsize=(16, 9), dpi=quality_dpi)
 
-        # X-axis settings
-        gnt.set_xticks(list(range(makespan)))
+        # Set X-axis ticks sensibly to avoid overcrowding
+        if makespan > 30:
+            step = max(1, makespan // 20)
+            gnt.set_xticks(list(range(0, makespan + step, step)))
+        else:
+            gnt.set_xticks(list(range(makespan)))
+
         gnt.set_xlim([-0.5, makespan + 2])
 
         # Y-axis settings
-        y_ticks = []
-        y_labels = []
-        for i in range(num_machines):
-            y_ticks.append(25 + i * 10)
-            y_labels.append(f"M. {i}")
+        y_ticks = [25 + i * 10 for i in range(num_machines)]
+        y_labels = [f"M. {i}" for i in range(num_machines)]
         gnt.set_yticks(y_ticks)
         gnt.set_yticklabels(y_labels)
         gnt.set_ylim([10, int(10 * (num_machines + 2) + 5)])
 
-        # Label
+        # Label settings
         gnt.set_xlabel('Steps')
         gnt.set_title('Scheduling')
 
-        # will use these 16 colors indicating jobs but loops back to green for the 16th and so on
-        # colors = ['green', 'blue', 'red', 'orange', 'brown', 'grey', 'cyan', 'olive', 'brick', 'goldenrod',
-        #         'ochre', 'teal', 'dark slate blue', 'light pink', 'beige']
-        color = ['#15b01a', '#0343df', '#e50000', '#f97306', '#653700', '#929591', '#00ffff', '#6e750e',
-                 '#a03623', '#fac205', '#bf9005', '#029386', '#214761', '#ffd1df', '#e6daa6']
+        color = ['#15b01a', '#0343df', '#e50000', '#f97306', '#653700', '#929591',
+                 '#00ffff', '#6e750e', '#a03623', '#fac205', '#bf9005', '#029386',
+                 '#214761', '#ffd1df', '#e6daa6']
 
-
-        # Plot bars
-        task: Task
+        # Plot tasks
         for i, task in zip(task_position_list, tasks):
-            # Draw if task scheduled
             if task.done:
-                # Get task state variables
-                start_time = task.started
-                finish_time = task.finished
+                start_time, finish_time = task.started, task.finished
                 selected_machine = task.selected_machine
-                # Get readable tool indices
                 tools = list(np.where(task.tools)[0])
-                machine_indices = list(np.where(task.machines)[0])  # Get readable machine indices
+                machine_indices = list(np.where(task.machines)[0])
 
-                # Calculate y-position
                 y_axes = 10 * (selected_machine + 2)
                 gnt.broken_barh([(start_time, finish_time - start_time)], (y_axes, 9),
-                                facecolor=color[task.job_index % 15], edgecolor='black')
+                                facecolor=color[task.job_index % len(color)], edgecolor='black')
 
-                # Annotate tools, job number, and deadline
-                pyplot.annotate(f'{"T:" + str(tools) + "  " if tools else ""}M:{machine_indices}',
-                                (start_time + 0.1, y_axes + 7.5))
-                pyplot.annotate(f'J {task.job_index} | T {task.task_index + 1} |', (start_time + 0.1, y_axes + 4.3),
-                                fontsize=15)
-                pyplot.annotate(f'L: {i}  D:{task.deadline}', (start_time + 0.1, y_axes + 0.5))
+                if isinstance(task, EnergyTask):
+                    # Selected machine's processing time and energy consumption clearly shown
+                    selected_proc_time = task.processing_times[selected_machine]
+                    selected_energy = task.energy_consumptions[selected_machine]
+
+                    # Prepare annotation text clearly separated by line breaks
+                    annotation_text = (f' J: {task.job_index}\n'
+                                       f' T: {task.task_index + 1}\n'
+                                       f' P: {selected_proc_time}\n'
+                                       f' E: {selected_energy}\n'
+                                       f' L: {i}\n')
+
+                    # Place annotation text in the middle of the bar
+                    pyplot.annotate(annotation_text,
+                                    (start_time + (finish_time - start_time) / 2, y_axes + 4.5),
+                                    fontsize=9,
+                                    ha='center',
+                                    va='center')
+                else:
+                    # Annotate tools, job number, and deadline
+                    pyplot.annotate(f'{"T:" + str(tools) + "  " if tools else ""}M:{machine_indices}',
+                                    (start_time + 0.1, y_axes + 7.5))
+                    pyplot.annotate(f'J {task.job_index} | T {task.task_index + 1} |', (start_time + 0.1, y_axes + 4.3),
+                                    fontsize=15)
+                    pyplot.annotate(f'L: {i}  D:{task.deadline}', (start_time + 0.1, y_axes + 0.5))
 
         return fig, gnt
 

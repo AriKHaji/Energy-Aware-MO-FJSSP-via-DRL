@@ -183,23 +183,26 @@ class SPFactory:
 
     @classmethod
     def _generate_instance_energy_fjssp(cls, task_combinations: List[Tuple[int]], num_jobs: int, num_tasks: int,
-                                        num_machines: int, num_tools: int, **kwargs) -> List[Task]:
+                                        num_machines: int, num_tools: int, **kwargs) -> List[EnergyTask]:
         """
-        Generates an energy-aware fjssp instance.
-        Each task can run on a subset of machines. For each task:
-          - A random number (between 1 and num_machines) of machines is selected.
-          - The available machine indices are converted into a binary mask of length num_machines.
-          - For each available machine, an energy consumption value is assigned.
+        Generates an energy-aware fjssp instance with processing times sampled uniformly and energy
+        consumption inversely related to processing times.
         """
         instance = []
-        # Get energy consumption values from kwargs or use defaults.
-        energy_values = kwargs.get('energy_consumptions', [0.5, 0.8, 1.0, 1.2])
-        runtime_values = kwargs.get('runtime_values', [2, 4, 6, 8, 10])
+        runtime_range = kwargs.get('runtime_range', (17, 214))  # global min/max runtime values
+        e_min = kwargs.get('e_min', 20)
+        e_max = kwargs.get('e_max', 220)
+        alpha = kwargs.get('alpha', 4)
+        random_seed = kwargs.get('random_seed', None)
+
+        if random_seed is not None:
+            np.random.seed(random_seed)
+            random.seed(random_seed)
+
         for j in range(num_jobs):
             for t in range(num_tasks):
-                # Pick a random task combination for runtime and tool requirements.
+                # Pick a random task combination for tool requirements.
                 task_tuple = list(task_combinations[np.random.randint(0, len(task_combinations) - 1)])
-                runtime_value = task_tuple[2]
                 tools_value = list(task_tuple[1])
 
                 # Randomly determine the number of available machines (between 1 and num_machines).
@@ -209,9 +212,19 @@ class SPFactory:
                 # Create a binary mask of length num_machines.
                 binary_mask = [1 if i in available_machines else 0 for i in range(num_machines)]
 
-                # For each available machine, assign an energy consumption value.
-                energy_mapping = {machine: random.choice(energy_values) for machine in available_machines}
-                processing_times_mapping = {machine: random.choice(runtime_values) for machine in available_machines}
+                # Sample processing times uniformly within runtime_range.
+                processing_times_list = np.random.randint(runtime_range[0], runtime_range[1] + 1, size=x)
+                processing_times_mapping = dict(zip(available_machines, processing_times_list))
+
+                # Generate energy consumption values based on processing times.
+                energy_values = generate_energy_consumption(
+                    processing_times_list,
+                    e_min=e_min,
+                    e_max=e_max,
+                    alpha=alpha,
+                    random_seed=random_seed
+                )
+                energy_mapping = dict(zip(available_machines, energy_values))
 
                 # Create the Task instance with the binary mask.
                 task = EnergyTask(
@@ -226,8 +239,7 @@ class SPFactory:
                     energy_consumptions=energy_mapping,
                     processing_times=processing_times_mapping
                 )
-                # Attach the energy consumption mapping.
-                #task.energy_consumptions = energy_mapping
+
                 instance.append(task)
 
         return instance
@@ -326,6 +338,42 @@ def visualize_regular_instance(instance: list, num_jobs: int):
             table.add_row(str(task.task_index), machine_mask, runtime)
 
         console.print(table)
+
+
+def generate_energy_consumption(processing_times, e_min, e_max, alpha=2, random_seed=None):
+    """
+    Generates stochastic integer energy consumption values inversely related to processing times.
+
+    Parameters:
+    - processing_times: list or numpy array of processing times.
+    - e_min: minimum possible energy consumption.
+    - e_max: maximum possible energy consumption.
+    - alpha: shape parameter controlling randomness (default=2).
+    - random_seed: seed for reproducibility (default=None).
+
+    Returns:
+    - numpy array of integer energy consumption values.
+    """
+    p_global_min = 17
+    p_global_max = 214
+
+    if random_seed is not None:
+        np.random.seed(random_seed)
+
+    processing_times = np.array(processing_times)
+
+    # Normalize processing times to [0, 1]
+    p_norm = (processing_times - p_global_min) / (p_global_max - p_global_min)
+
+    # Inverse relationship (longer processing -> lower energy)
+    a_params = 1 + alpha * (1 - p_norm)
+    b_params = 1 + alpha * p_norm
+
+    # Generate stochastic energy values and round to nearest integer
+    energy = np.random.beta(a_params, b_params) * (e_max - e_min) + e_min
+    energy_int = np.round(energy).astype(int)
+
+    return energy_int
 
 
 if __name__ == '__main__':
