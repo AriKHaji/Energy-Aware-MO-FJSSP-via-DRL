@@ -157,7 +157,7 @@ def main(config_file_name=None, external_config=None):
     # Generate instances
     generated_instances: List[List[Task]] = generate_instances_from_config(current_config)
 
-    if current_config.get('sp_type') == "energy_fjssp_benchmark":
+    if current_config.get('sp_type') == "energy_fjssp":
         # compute individual hash for each instance
         SPFactory.compute_and_set_hashes(instances=generated_instances)
 

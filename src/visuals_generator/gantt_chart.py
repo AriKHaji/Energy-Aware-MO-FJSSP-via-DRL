@@ -137,6 +137,7 @@ class GanttChartPlotter:
                     # Prepare annotation text clearly separated by line breaks
                     annotation_text = (f' J: {task.job_index}\n'
                                        f' T: {task.task_index + 1}\n'
+                                       f' M: {machine_indices}\n'
                                        f' P: {selected_proc_time}\n'
                                        f' E: {selected_energy}\n'
                                        f' L: {i}\n')

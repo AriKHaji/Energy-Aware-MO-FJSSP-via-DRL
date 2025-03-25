@@ -92,7 +92,7 @@ class EnergyEnv(gym.Env):
         self.observation_space: spaces.Box = spaces.Box(low=0, high=1, shape=observation_shape)
 
         # reward parameters
-        self.reward_strategy = config.get('reward_strategy', 'rs3')
+        self.reward_strategy = config.get('reward_strategy')
         self.reward_scale = config.get('reward_scale', 1)
         self.mr2_reward_buffer: List[List] = [[] for _ in range(len(data))]  # needed for m2r reward only
 

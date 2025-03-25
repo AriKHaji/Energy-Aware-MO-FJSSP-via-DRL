@@ -6,33 +6,35 @@ e_min, e_max = 20, 220
 alpha = 10
 p_global_min, p_global_max = 17, 214
 
-# Use your existing function directly
-def generate_energy_consumption(processing_times, e_min, e_max, alpha=4, random_seed=7):
+def generate_energy_consumption(p, e_min, e_max, p_min, p_max, alpha=4, random_seed=None):
     if random_seed is not None:
         np.random.seed(random_seed)
 
-    processing_times = np.array(processing_times)
+    # Normalize processing time clearly
+    p_norm = (p - p_min) / (p_max - p_min)
 
-    p_norm = (processing_times - p_global_min) / (p_global_max - p_global_min)
+    # Define Beta parameters
+    a_param = 1 + alpha * (1 - p_norm)
+    b_param = 1 + alpha * p_norm
 
-    a_params = 1 + alpha * (1 - p_norm)
-    b_params = 1 + alpha * p_norm
+    # Sample clearly from Beta distribution and scale
+    energy = e_min + (e_max - e_min) * np.random.beta(a_param, b_param)
 
-    energy = np.random.beta(a_params, b_params) * (e_max - e_min) + e_min
-    energy_int = np.round(energy).astype(int)
+    # Return integer-rounded energy
+    return int(np.round(energy))
 
-    return energy_int
 
-def plot_energy_distribution(processing_times, e_min, e_max, alpha, samples=10000):
+def plot_energy_distribution(processing_times, e_min, e_max, p_min, p_max, alpha, samples=10000):
     plt.figure(figsize=(10, 6))
 
     for p in processing_times:
-        # Generate many samples for a single processing time to approximate distribution
-        energy_samples = generate_energy_consumption(
-            [p]*samples, e_min, e_max, alpha
-        )
+        # Generate many samples clearly for the same processing time
+        energy_samples = [
+            generate_energy_consumption(p, e_min, e_max, p_min, p_max, alpha)
+            for _ in range(samples)
+        ]
 
-        # Plot histogram as PDF approximation
+        # Plot clearly as histogram approximating PDF
         plt.hist(
             energy_samples,
             bins=100,
@@ -48,8 +50,10 @@ def plot_energy_distribution(processing_times, e_min, e_max, alpha, samples=1000
     plt.grid(True)
     plt.show()
 
-# Example processing times (lowest, mid-low, mid, mid-high, highest)
-processing_times_example = [17, 50, 100, 150, 214]
+# p_example = 50
+# energy_value = generate_energy_consumption(p_example, 20, 220, 17, 214, alpha=10)
+# print(f"Energy consumption: {energy_value}")
 
-# Plot
-plot_energy_distribution(processing_times_example, e_min, e_max, alpha)
+
+processing_times_example = [17, 50, 100, 150, 214]
+plot_energy_distribution(processing_times_example, e_min, e_max, p_global_min, p_global_max, alpha)
