@@ -44,7 +44,7 @@ class EnergyEnv(gym.Env):
         self.max_task_index: int = self.num_tasks - 1
         self.max_job_index: int = self.num_jobs - 1
 
-        self.idle_range = config.get('machine_idle_energy_range', [0, 0.5, 1, 1.5])
+        self.idle_range = (0.01, 0.09)
 
         # retrieve run-dependent settings from config
         self.shuffle: bool = config.get('shuffle', False)

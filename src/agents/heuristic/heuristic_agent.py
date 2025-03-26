@@ -312,16 +312,11 @@ def lec_fjssp(tasks: List, action_mask: np.array) -> int:
                 continue
 
             task = tasks[active_task_dict[job]]
-            # Get processing time for the task on this machine.
-            processing_time = task.processing_times.get(machine, float('inf'))
-            # Get the energy consumption factor for the task on this machine.
-            energy_factor = task.energy_consumptions.get(machine, float('inf'))
 
-            # Compute the energy consumption for this task-machine pairing.
-            task_energy = processing_time * energy_factor
+            energy_consumption = task.energy_consumptions.get(machine)
 
-            if task_energy < best_energy:
-                best_energy = task_energy
+            if energy_consumption is not None and energy_consumption < best_energy:
+                best_energy = energy_consumption
                 best_action = action
 
     # Fallback: if no action was chosen, select the first valid action.

@@ -110,8 +110,6 @@ def training(config: dict, data_train: List[List[Task]], data_val: List[List[Tas
     agent.learn(total_instances=config['total_instances'], total_timesteps=config['total_timesteps'],
                 intermediate_test=inter_test)
 
-    agent.save(model_path)
-
 
 def main(config_file_name: dict = None, external_config: dict = None) -> None:
     """

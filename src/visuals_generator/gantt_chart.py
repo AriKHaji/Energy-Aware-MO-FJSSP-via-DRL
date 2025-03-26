@@ -138,8 +138,8 @@ class GanttChartPlotter:
                     annotation_text = (f' J: {task.job_index}\n'
                                        f' T: {task.task_index + 1}\n'
                                        f' M: {machine_indices}\n'
-                                       f' P: {selected_proc_time}\n'
-                                       f' E: {selected_energy}\n'
+                                       f' P: {task.processing_times.__str__()}\n'
+                                       f' E: {task.energy_consumptions.__str__()}\n'
                                        f' L: {i}\n')
 
                     # Place annotation text in the middle of the bar
