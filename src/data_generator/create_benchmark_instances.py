@@ -68,7 +68,7 @@ instance_data = ["""
     3 2 0 214 2 150 2 2 87 1 66 1 4 178
     3 2 0 87 1 62 1 2 180 2 3 190 4 100
     3 2 0 87 1 65 1 4 173 2 3 145 2 136
-    """ #sfjs10
+    """ #sfjs10 4x3x3
 ]
 
 ### Find global min and max processing times in the dataset

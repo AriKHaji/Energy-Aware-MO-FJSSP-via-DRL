@@ -198,11 +198,7 @@ class EnergyEnv(gym.Env):
     def state_obs(self) -> List[float]:
         obs = []
 
-        # Ensure a maximum runtime is defined for normalization.
-        if not hasattr(self, 'max_runtime'):
-            self.max_runtime = max(task.runtime for task in self.data[0]) if self.data[0] else 1
-
-        # --- Local Features per Job ---
+        ### --- Local Features per Job ---
         for job in range(self.num_jobs):
             # Determine the index of the next task for the job.
             t_idx = self.job_task_state[job] if self.job_task_state[job] < self.max_task_index else self.max_task_index
@@ -218,9 +214,7 @@ class EnergyEnv(gym.Env):
             machine_energy = []
             for m in range(self.num_machines):
                 if next_task.machines[m] == 1:
-                    proc_time = next_task.processing_times.get(m, 0)
-                    energy_cons = next_task.energy_consumptions.get(m, 0)
-                    energy_val = proc_time * energy_cons
+                    energy_val = next_task.energy_consumptions.get(m, 0)
                     machine_energy.append(energy_val)
                 else:
                     machine_energy.append(0.0)
@@ -231,9 +225,9 @@ class EnergyEnv(gym.Env):
             # Append local features for the job.
             obs.extend([runtime_norm, task_index_norm] + machine_energy_norm)
 
-        # --- Global Features ---
+        ### --- Global Features ---
 
-        # 1. Machine Occupancy / Availability:
+        ## 1. Machine Occupancy / Availability:
         current_makespan = self.get_makespan()
         # Normalize each machine's last occupancy by the current makespan.
         norm_availability = [
@@ -242,29 +236,10 @@ class EnergyEnv(gym.Env):
         ]
         obs.extend(norm_availability)
 
-        # 2. Idle Energy Costs:
-        # Compute idle time for each machine (time gap from last task finish to current makespan).
-        idle_times = [
-            max(0, current_makespan - self.ends_of_machine_occupancies[m])
-            for m in range(self.num_machines)
-        ]
-        # Multiply idle time by the machine's idle energy consumption to get cost.
-        idle_energy_costs = [
-            idle * rate for idle, rate in zip(idle_times, self.machine_idle_energys)
-        ]
-        # Normalize idle energy costs.
-        max_idle_energy = max(idle_energy_costs) if max(idle_energy_costs) > 0 else 1.0
-        norm_idle_energy_costs = [cost / max_idle_energy for cost in idle_energy_costs]
-        obs.extend(norm_idle_energy_costs)
-
-        # 3. Global Progress Metrics:
-        # Normalized makespan (using max_runtime as a rough normalizer; adjust as needed).
-        norm_makespan = current_makespan / self.max_runtime
-        # Normalized cumulative energy consumption.
-        # (Here you might need to choose a normalization factor based on the expected range.)
-        norm_total_energy = self.total_energy_consumption / (
-                    current_makespan * np.mean(self.machine_idle_energys) + 1e-6)
-        obs.extend([norm_makespan, norm_total_energy])
+        ## 2. Progress Metrics:
+        # Progress as the fraction of tasks scheduled.
+        norm_progress = sum(self.job_task_state) / self.num_all_tasks
+        obs.extend([norm_progress])
 
         self._state_obs = obs
         return self._state_obs
@@ -386,10 +361,10 @@ class EnergyEnv(gym.Env):
 
         """
         if self.runs >= self.log_interval:
-            print('-' * 110, f'\n{self.runs} instances played! Last instance seen: {self.data_idx}/{len(self.data)}')
-            print(f'Average performance since last log: mean reward={np.around(np.mean(self.logging_rewards), 2)}, '
-                     f'mean makespan={np.around(np.mean(self.logging_makespans), 2)}, '
-                     f'mean energy consumption={np.around(np.mean(self.logging_total_energy_consumptions), 2)}')
+            # print('-' * 110, f'\n{self.runs} instances played! Last instance seen: {self.data_idx}/{len(self.data)}')
+            # print(f'Average performance since last log: mean reward={np.around(np.mean(self.logging_rewards), 2)}, '
+            #          f'mean makespan={np.around(np.mean(self.logging_makespans), 2)}, '
+            #          f'mean energy consumption={np.around(np.mean(self.logging_total_energy_consumptions), 2)}')
             self.logging_rewards.clear()
             self.logging_makespans.clear()
             self.logging_total_energy_consumptions.clear()
@@ -537,6 +512,8 @@ class EnergyEnv(gym.Env):
             reward = self.compute_rs5(prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s)
         elif self.reward_strategy == 'rs6':
             reward = self.compute_rs6(prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s)
+        elif self.reward_strategy == 'rs7':
+            reward = self.compute_rs7(prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s)
 
         reward *= self.reward_scale
 
@@ -544,19 +521,40 @@ class EnergyEnv(gym.Env):
 
 
     def compute_rs1(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
+        """
+        As in:
+            "Multi-Agent Reinforcement Learning for Job Shop Scheduling in Dynamic Environments"
+        DOI: 10.3390/su16083234
+        """
         return prev_makespan - new_makespan
 
     def compute_rs2(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
+        """
+        As in:
+            "Real-Time Data-Driven Dynamic Scheduling for Flexible Job Shop with Insufficient Transportation Resources Using Hybrid Deep Q Network"
+        DOI: 10.1016/j.rcim.2021.102283
+        """
         reward1 = prev_makespan - new_makespan
         reward2 = prev_total_energy_consumption - new_total_energy_consumption
         return reward1 + s * reward2
 
     def compute_rs3(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
+        """
+        As in:
+            "Dynamic scheduling mechanism for intelligent workshop with deep reinforcement learning method based on multi-agent system architecture"
+        DOI: 10.1016/j.cie.2024.110155
+        """
+        reward1 = prev_makespan - new_makespan
+        reward2 = -new_total_energy_consumption
+
+        return reward1 + s * reward2
+
+    def compute_rs4(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
         reward1 = - ((prev_makespan - new_makespan) ** 2)
         reward2 = - ((prev_total_energy_consumption - new_total_energy_consumption) ** 2)
         return reward1 + s * reward2
 
-    def compute_rs4(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
+    def compute_rs5(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
         reward1 = -(prev_makespan - new_makespan) ** 2
         reward2 = prev_total_energy_consumption - new_total_energy_consumption
 
@@ -567,7 +565,7 @@ class EnergyEnv(gym.Env):
 
         return reward1 + s * reward2 + additional_reward
 
-    def compute_rs5(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
+    def compute_rs6(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
         reward1 = -((prev_makespan - new_makespan) ** 2)
         reward2 = -((prev_total_energy_consumption - new_total_energy_consumption) ** 2)
 
@@ -578,7 +576,7 @@ class EnergyEnv(gym.Env):
 
         return reward
 
-    def compute_rs6(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
+    def compute_rs7(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
         if not self.check_done():
             return 0
         else:
