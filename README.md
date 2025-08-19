@@ -28,7 +28,7 @@ For original schlably docs and tutorials, see the upstream documentation: https:
 - End-to-end: Extended the complete stack—from data generation to testing—so energy-aware FJSSP models can be trained on energy-augmented data and evaluated against heuristics.
 
 ## Quickstart
-- Python: 3.10+ recommended.
+- Python: 3.10 recommended.
 - Install: `pip install -r requirements.txt`
 - Train: `python -m src.agents.train -fp training/ppo_masked/energy_fjsssp_config_job3_task4_tools0.yaml`
 - Test: `python -m src.agents.test -fp testing/ppo_masked/energy_fjsssp_config_job3_task4_tools0.yaml --plot-ganttchart`
