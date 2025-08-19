@@ -1,12 +1,8 @@
-import sys
-
 import gym
 import numpy
 from gym import spaces
 import numpy as np
 import copy
-
-from torch.distributed.rpc import new_method
 
 from src.data_generator.energy_task import EnergyTask
 from src.visuals_generator.gantt_chart import GanttChartPlotter
@@ -44,7 +40,6 @@ class EnergyEnv(gym.Env):
         self.max_task_index: int = self.num_tasks - 1
         self.max_job_index: int = self.num_jobs - 1
 
-        self.idle_range = (0.01, 0.09)
 
         # retrieve run-dependent settings from config
         self.shuffle: bool = config.get('shuffle', False)
@@ -57,7 +52,12 @@ class EnergyEnv(gym.Env):
         self.ends_of_machine_occupancies: numpy.ndarray = np.zeros(self.num_machines, dtype=int)
         self.job_task_state: numpy.ndarray = np.zeros(self.num_jobs, dtype=int)
         self.task_job_mapping: dict = {}
-        self.machine_idle_energys = np.random.uniform(self.idle_range[0], self.idle_range[1], size=self.num_machines)
+
+        # self.idle_range = (0.01, 0.09)
+        # self.machine_idle_energys = np.random.uniform(self.idle_range[0], self.idle_range[1], size=self.num_machines)
+        ## For the tests
+        self.idle_energy_values = [0.01, 0.03, 0.05, 0.07, 0.09]
+        self.machine_idle_energys = np.array(self.idle_energy_values[:self.num_machines])
 
         # initialize info which is not reset
         self.runs: int = -2  # counts runs (episodes/dones).  -1 because reset is called twice before start
@@ -117,7 +117,9 @@ class EnergyEnv(gym.Env):
         self.action_history = []
         self.executed_job_history = []
         self.reward_history = []
-        self.machine_idle_energys = np.random.uniform(self.idle_range[0], self.idle_range[1], size=self.num_machines)
+
+        ### Commented because of the tests
+        # self.machine_idle_energys = np.random.uniform(self.idle_range[0], self.idle_range[1], size=self.num_machines)
 
         # clear episode rewards after all training data has passed once. Stores info across runs.
         if self.data_idx == 0:
@@ -220,10 +222,10 @@ class EnergyEnv(gym.Env):
                     machine_energy.append(0.0)
 
             # Normalize energy vector per job.
-            machine_energy_norm = [e / self.max_energy for e in machine_energy]
+            processing_energy_norm = [e / self.max_energy for e in machine_energy]
 
             # Append local features for the job.
-            obs.extend([runtime_norm, task_index_norm] + machine_energy_norm)
+            obs.extend([runtime_norm, task_index_norm] + processing_energy_norm)
 
         ### --- Global Features ---
 
@@ -495,7 +497,7 @@ class EnergyEnv(gym.Env):
 
         prev_total_energy_consumption = self.total_energy_consumption
         new_total_energy_consumption = self.calculate_energy_consumption()
-        s = 1 / (self.num_jobs * self.num_machines) # Scaling Factor for Energy Consumption
+        s = 1  # Scaling Factor for Energy Consumption
         self.total_energy_consumption = new_total_energy_consumption
 
         reward = 0
@@ -514,6 +516,8 @@ class EnergyEnv(gym.Env):
             reward = self.compute_rs6(prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s)
         elif self.reward_strategy == 'rs7':
             reward = self.compute_rs7(prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s)
+        elif self.reward_strategy == 'rs8':
+            reward = self.compute_rs8(prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s)
 
         reward *= self.reward_scale
 
@@ -521,65 +525,48 @@ class EnergyEnv(gym.Env):
 
 
     def compute_rs1(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
-        """
-        As in:
-            "Multi-Agent Reinforcement Learning for Job Shop Scheduling in Dynamic Environments"
-        DOI: 10.3390/su16083234
-        """
         return prev_makespan - new_makespan
 
     def compute_rs2(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
-        """
-        As in:
-            "Real-Time Data-Driven Dynamic Scheduling for Flexible Job Shop with Insufficient Transportation Resources Using Hybrid Deep Q Network"
-        DOI: 10.1016/j.rcim.2021.102283
-        """
-        reward1 = prev_makespan - new_makespan
-        reward2 = prev_total_energy_consumption - new_total_energy_consumption
-        return reward1 + s * reward2
+        return prev_total_energy_consumption - new_total_energy_consumption
 
     def compute_rs3(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
-        """
-        As in:
-            "Dynamic scheduling mechanism for intelligent workshop with deep reinforcement learning method based on multi-agent system architecture"
-        DOI: 10.1016/j.cie.2024.110155
-        """
         reward1 = prev_makespan - new_makespan
-        reward2 = -new_total_energy_consumption
-
-        return reward1 + s * reward2
+        reward2 = prev_total_energy_consumption - new_total_energy_consumption
+        return reward1 + reward2
 
     def compute_rs4(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
-        reward1 = - ((prev_makespan - new_makespan) ** 2)
-        reward2 = - ((prev_total_energy_consumption - new_total_energy_consumption) ** 2)
-        return reward1 + s * reward2
+        reward1 = prev_makespan - new_makespan
+        reward2 = -new_total_energy_consumption
+        return reward1 + reward2
 
     def compute_rs5(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
-        reward1 = -(prev_makespan - new_makespan) ** 2
-        reward2 = prev_total_energy_consumption - new_total_energy_consumption
-
-        # Additionally, Reward for parallelization by equal machine workload
-        workloads = self.ends_of_machine_occupancies  # an array of finish times per machine
-        std_workload = np.std(workloads)
-        additional_reward = - (std_workload ** 2)  # Squared so that larger differences are penalized more
-
-        return reward1 + s * reward2 + additional_reward
+        reward1 = - ((prev_makespan - new_makespan) ** 2)
+        reward2 = - ((prev_total_energy_consumption - new_total_energy_consumption) ** 2)
+        return reward1 + reward2
 
     def compute_rs6(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
-        reward1 = -((prev_makespan - new_makespan) ** 2)
-        reward2 = -((prev_total_energy_consumption - new_total_energy_consumption) ** 2)
+        reward1 = prev_makespan - new_makespan
+        reward2 = prev_total_energy_consumption - new_total_energy_consumption
 
-        reward = reward1 + s * reward2
+        # Additionally, Reward for parallelization
+        additional_reward = - np.std(self.ends_of_machine_occupancies)  # Squared so that larger differences are penalized more
+        return reward1 + reward2 + additional_reward
+
+    def compute_rs7(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
+        reward1 = prev_makespan - new_makespan
+        reward2 = prev_total_energy_consumption - new_total_energy_consumption
+        reward = reward1 + reward2
 
         if self.check_done():
-            reward += - new_makespan - s * new_total_energy_consumption
+            reward += - new_makespan - new_total_energy_consumption
 
         return reward
 
-    def compute_rs7(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
+    def compute_rs8(self, prev_makespan, new_makespan, prev_total_energy_consumption, new_total_energy_consumption, s) -> float:
         if not self.check_done():
             return 0
         else:
             reward1 = - new_makespan
             reward2 = - new_total_energy_consumption
-            return reward1 + s * reward2
+            return reward1 + reward2

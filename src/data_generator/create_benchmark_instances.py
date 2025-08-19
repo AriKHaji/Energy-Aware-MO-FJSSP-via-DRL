@@ -6,10 +6,22 @@ from rich.table import Table
 
 # Library import
 import numpy as np
+from src.utils.energy import generate_energy_consumption
 
 from src.data_generator.energy_task import EnergyTask
 
-# All Fattahi instances (SFJS)
+def load_instance(file_path: Path):
+    with open(file_path, 'rb') as handle:
+        data = pickle.load(handle)
+    return data[0]
+
+
+"""
+Parviz Fattahi et al., “Mathematical modeling and heuristic approaches to flexible job shop scheduling problems,” 
+en, Journal of Intelligent Manufacturing, vol. 18, no. 3, pp. 331–342, Jul. 2007, issn: 0956-5515, 1572-8145. doi:
+10.1007/s10845-007-0026-8. [Online]. Available: http://link.springer.com/10.1007/s10845-007-0026-8 (visited on 03/29/2025).
+"""
+
 instance_data = ["""
     2 2 
     2 2 0 25 1 37 2 0 32 1 24
@@ -92,40 +104,8 @@ instance_data = ["""
 # print(f"Global minimum processing time: {p_global_min}")
 # print(f"Global maximum processing time: {p_global_max}")
 
-def generate_energy_consumption(processing_times, e_min, e_max, alpha=4, random_seed=7):
-    """
-    Generates stochastic integer energy consumption values inversely related to processing times.
-
-    Parameters:
-    - processing_times: list or numpy array of processing times.
-    - e_min: minimum possible energy consumption.
-    - e_max: maximum possible energy consumption.
-    - alpha: shape parameter controlling randomness (default=2).
-    - random_seed: seed for reproducibility (default=None).
-
-    Returns:
-    - numpy array of integer energy consumption values.
-    """
-    p_global_min = 17
-    p_global_max = 214
-
-    if random_seed is not None:
-        np.random.seed(random_seed)
-
-    processing_times = np.array(processing_times)
-
-    # Normalize processing times to [0, 1]
-    p_norm = (processing_times - p_global_min) / (p_global_max - p_global_min)
-
-    # Inverse relationship (longer processing -> lower energy)
-    a_params = 1 + alpha * (1 - p_norm)
-    b_params = 1 + alpha * p_norm
-
-    # Generate stochastic energy values and round to nearest integer
-    energy = np.random.beta(a_params, b_params) * (e_max - e_min) + e_min
-    energy_int = np.round(energy).astype(int)
-
-    return energy_int
+P_GLOBAL_MIN = 17
+P_GLOBAL_MAX = 214
 
 # # Example data
 # processing_times = [10, 15, 20, 12]
@@ -141,6 +121,7 @@ def generate_energy_consumption(processing_times, e_min, e_max, alpha=4, random_
 
 def parse_fattahi_instance(instance_str: str, e_min: int, e_max: int, alpha=4, random_seed=7) -> List[EnergyTask]:
     """
+
     Parses an instance from Fattahi et al. and generates EnergyTask instances.
 
     Parameters:
@@ -179,13 +160,21 @@ def parse_fattahi_instance(instance_str: str, e_min: int, e_max: int, alpha=4, r
                 machines_mask[machine_idx] = 1
                 idx += 2
 
-            energy_values = generate_energy_consumption(
-                [processing_times[m] for m in machines],
-                e_min,
-                e_max,
-                alpha,
-                random_seed
-            )
+            # Seed once for reproducibility, then sample per machine using the shared util
+            if random_seed is not None:
+                np.random.seed(random_seed)
+            energy_values = [
+                generate_energy_consumption(
+                    processing_times[m],
+                    e_min,
+                    e_max,
+                    P_GLOBAL_MIN,
+                    P_GLOBAL_MAX,
+                    alpha,
+                    None
+                )
+                for m in machines
+            ]
 
             energy_consumptions = dict(zip(machines, energy_values))
 
@@ -236,95 +225,126 @@ def visualize_instance(instance, num_jobs):
 
         console.print(table)
 
+def load_instances_and_visualize():
+    # Define the directory that stores the pickle instance files.
+    data_dir = Path("../../data/instances/energy_fjssp_benchmark")
+
+    if not data_dir.exists():
+        print("Data directory does not exist:", data_dir)
+        return
+
+    # Grab all pickle files in the directory.
+    pkl_files = sorted(data_dir.glob("*.pkl"))
+    if not pkl_files:
+        print("No pickle files found in directory:", data_dir)
+        return
+
+    for pkl_file in pkl_files:
+        print(f"Loading instance file: {pkl_file.name}")
+        with open(pkl_file, 'rb') as handle:
+            # Each file was saved as a list containing one or more instance(s)
+            data = pickle.load(handle)
+
+            for idx, instance in enumerate(data, start=1):
+                # Dynamically compute the number of jobs by examining unique job indices:
+                unique_jobs = {task.job_index for task in instance}
+                num_jobs = len(unique_jobs)
+                print(f"Visualizing instance {idx} from {pkl_file.name} with {num_jobs} job(s):")
+                visualize_instance(instance, num_jobs)
+                print("-" * 70)
 
 # Example usage
 if __name__ == "__main__":
-    # Get current directory of the script
-    current_dir = Path(__file__).parent.resolve()
-    print(current_dir)
+    load_instances_and_visualize()
 
-    data_file_path_parent = Path("../../data/instances/energy_fjssp_benchmark")
-    data_file_path_parent.mkdir(parents=True, exist_ok=True)  # Ensure directory exists
 
-    random_seed = 7
-
-    # Generate EnergyTasks from instance
-    sfjs01_2x2x2 = parse_fattahi_instance(instance_data[0], e_min=20, e_max=220)
-    visualize_instance(sfjs01_2x2x2, 2)
-    data = [sfjs01_2x2x2]
-    data_file_path = data_file_path_parent / "sfjs01_2x2x2.pkl"
-    with open(data_file_path, 'wb') as handle:
-        pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    print("-" * 70)
-
-    sfjs02_2x2x2 = parse_fattahi_instance(instance_data[1], e_min=20, e_max=220)
-    visualize_instance(sfjs02_2x2x2, 2)
-    data = [sfjs02_2x2x2]
-    data_file_path = data_file_path_parent / "sfjs02_2x2x2.pkl"
-    with open(data_file_path, 'wb') as handle:
-        pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    print("-" * 70)
-
-    sfjs03_3x2x2 = parse_fattahi_instance(instance_data[2], e_min=20, e_max=220)
-    data = [sfjs03_3x2x2]
-    data_file_path = data_file_path_parent / "sfjs03_3x2x2.pkl"
-    with open(data_file_path, 'wb') as handle:
-        pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    visualize_instance(sfjs03_3x2x2, 3)
-    print("-" * 70)
-
-    sfjs04_3x2x2 = parse_fattahi_instance(instance_data[3], e_min=20, e_max=220)
-    data = [sfjs04_3x2x2]
-    data_file_path = data_file_path_parent / "sfjs04_3x2x2.pkl"
-    with open(data_file_path, 'wb') as handle:
-        pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    visualize_instance(sfjs04_3x2x2, 3)
-    print("-" * 70)
-
-    sfjs05_3x2x2 = parse_fattahi_instance(instance_data[4], e_min=20, e_max=220)
-    data = [sfjs05_3x2x2]
-    data_file_path = data_file_path_parent / "sfjs05_3x2x2.pkl"
-    with open(data_file_path, 'wb') as handle:
-        pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    visualize_instance(sfjs05_3x2x2, 3)
-    print("-" * 70)
-
-    sfjs06_3x3x3 = parse_fattahi_instance(instance_data[5], e_min=20, e_max=220)
-    data = [sfjs06_3x3x3]
-    data_file_path = data_file_path_parent / "sfjs06_3x3x3.pkl"
-    with open(data_file_path, 'wb') as handle:
-        pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    visualize_instance(sfjs06_3x3x3, 3)
-    print("-" * 70)
-
-    sfjs07_3x3x5 = parse_fattahi_instance(instance_data[6], e_min=20, e_max=220)
-    data = [sfjs07_3x3x5]
-    data_file_path = data_file_path_parent / "sfjs07_3x3x5.pkl"
-    with open(data_file_path, 'wb') as handle:
-        pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    visualize_instance(sfjs07_3x3x5, 3)
-    print("-" * 70)
-
-    sfjs08_3x3x4 = parse_fattahi_instance(instance_data[7], e_min=20, e_max=220)
-    data = [sfjs08_3x3x4]
-    data_file_path = data_file_path_parent / "sfjs08_3x3x4.pkl"
-    with open(data_file_path, 'wb') as handle:
-        pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    visualize_instance(sfjs08_3x3x4, 3)
-    print("-" * 70)
-
-    sfjs09_3x3x3 = parse_fattahi_instance(instance_data[8], e_min=20, e_max=220)
-    data = [sfjs09_3x3x3]
-    data_file_path = data_file_path_parent / "sfjs09_3x3x3.pkl"
-    with open(data_file_path, 'wb') as handle:
-        pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    visualize_instance(sfjs09_3x3x3, 3)
-    print("-" * 70)
-
-    sfjs10_4x3x5 = parse_fattahi_instance(instance_data[9], e_min=20, e_max=220)
-    data = [sfjs10_4x3x5]
-    data_file_path = data_file_path_parent / "sfjs10_4x3x5.pkl"
-    with open(data_file_path, 'wb') as handle:
-        pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    visualize_instance(sfjs10_4x3x5, 4)
-    print("-" * 70)
+    ##### Create Benchmark Data
+    # # Get current directory of the script
+    # current_dir = Path(__file__).parent.resolve()
+    # print(current_dir)
+    #
+    # data_file_path_parent = Path("../../data/instances/energy_fjssp_benchmark")
+    # data_file_path_parent.mkdir(parents=True, exist_ok=True)  # Ensure directory exists
+    #
+    # random_seed = 7
+    #
+    # # Generate EnergyTasks from instance
+    # sfjs01_2x2x2 = parse_fattahi_instance(instance_data[0], e_min=20, e_max=220)
+    # visualize_instance(sfjs01_2x2x2, 2)
+    # data = [sfjs01_2x2x2]
+    # data_file_path = data_file_path_parent / "sfjs01_2x2x2.pkl"
+    # with open(data_file_path, 'wb') as handle:
+    #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # print("-" * 70)
+    #
+    # sfjs02_2x2x2 = parse_fattahi_instance(instance_data[1], e_min=20, e_max=220)
+    # visualize_instance(sfjs02_2x2x2, 2)
+    # data = [sfjs02_2x2x2]
+    # data_file_path = data_file_path_parent / "sfjs02_2x2x2.pkl"
+    # with open(data_file_path, 'wb') as handle:
+    #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # print("-" * 70)
+    #
+    # sfjs03_3x2x2 = parse_fattahi_instance(instance_data[2], e_min=20, e_max=220)
+    # data = [sfjs03_3x2x2]
+    # data_file_path = data_file_path_parent / "sfjs03_3x2x2.pkl"
+    # with open(data_file_path, 'wb') as handle:
+    #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # visualize_instance(sfjs03_3x2x2, 3)
+    # print("-" * 70)
+    #
+    # sfjs04_3x2x2 = parse_fattahi_instance(instance_data[3], e_min=20, e_max=220)
+    # data = [sfjs04_3x2x2]
+    # data_file_path = data_file_path_parent / "sfjs04_3x2x2.pkl"
+    # with open(data_file_path, 'wb') as handle:
+    #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # visualize_instance(sfjs04_3x2x2, 3)
+    # print("-" * 70)
+    #
+    # sfjs05_3x2x2 = parse_fattahi_instance(instance_data[4], e_min=20, e_max=220)
+    # data = [sfjs05_3x2x2]
+    # data_file_path = data_file_path_parent / "sfjs05_3x2x2.pkl"
+    # with open(data_file_path, 'wb') as handle:
+    #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # visualize_instance(sfjs05_3x2x2, 3)
+    # print("-" * 70)
+    #
+    # sfjs06_3x3x3 = parse_fattahi_instance(instance_data[5], e_min=20, e_max=220)
+    # data = [sfjs06_3x3x3]
+    # data_file_path = data_file_path_parent / "sfjs06_3x3x3.pkl"
+    # with open(data_file_path, 'wb') as handle:
+    #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # visualize_instance(sfjs06_3x3x3, 3)
+    # print("-" * 70)
+    #
+    # sfjs07_3x3x5 = parse_fattahi_instance(instance_data[6], e_min=20, e_max=220)
+    # data = [sfjs07_3x3x5]
+    # data_file_path = data_file_path_parent / "sfjs07_3x3x5.pkl"
+    # with open(data_file_path, 'wb') as handle:
+    #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # visualize_instance(sfjs07_3x3x5, 3)
+    # print("-" * 70)
+    #
+    # sfjs08_3x3x4 = parse_fattahi_instance(instance_data[7], e_min=20, e_max=220)
+    # data = [sfjs08_3x3x4]
+    # data_file_path = data_file_path_parent / "sfjs08_3x3x4.pkl"
+    # with open(data_file_path, 'wb') as handle:
+    #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # visualize_instance(sfjs08_3x3x4, 3)
+    # print("-" * 70)
+    #
+    # sfjs09_3x3x3 = parse_fattahi_instance(instance_data[8], e_min=20, e_max=220)
+    # data = [sfjs09_3x3x3]
+    # data_file_path = data_file_path_parent / "sfjs09_3x3x3.pkl"
+    # with open(data_file_path, 'wb') as handle:
+    #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # visualize_instance(sfjs09_3x3x3, 3)
+    # print("-" * 70)
+    #
+    # sfjs10_4x3x5 = parse_fattahi_instance(instance_data[9], e_min=20, e_max=220)
+    # data = [sfjs10_4x3x5]
+    # data_file_path = data_file_path_parent / "sfjs10_4x3x5.pkl"
+    # with open(data_file_path, 'wb') as handle:
+    #     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # visualize_instance(sfjs10_4x3x5, 4)
+    # print("-" * 70)
